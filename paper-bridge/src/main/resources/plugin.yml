@@ -1,0 +1,8 @@
+name: PartiesAndChillBridge
+version: "${version}"
+main: dev.partiesandchill.bridge.BridgePlugin
+description: Backend bridge for Parties & Chill (party chat lock, AdvancedBan mutes, BedWars party adapters)
+author: Parties & Chill
+# Ignored by 1.8 – 1.12; keeps 1.13+ servers out of legacy-material mode.
+api-version: "1.13"
+softdepend: [AdvancedBan, BedWars1058, BedWars2023, BWProxy2023]

@@ -1,0 +1,20 @@
+[versions]
+velocity = "4.2.0"
+jedis = "8.0.1"
+junit = "6.1.3"
+shadow = "9.6.1"
+
+[libraries]
+velocity-api = { module = "com.velocitypowered:velocity-api", version.ref = "velocity" }
+jedis = { module = "redis.clients:jedis", version.ref = "jedis" }
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
+junit-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+spigot-api = { module = "org.spigotmc:spigot-api", version = "1.8.8-R0.1-SNAPSHOT" }
+bedwars1058-api = { module = "com.github.andrei1058.BedWars1058:bedwars-api", version = "24.9" }
+bedwars2023-api = { module = "com.tomkeuper.bedwars:bedwars-api", version = "5.0.0" }
+bwproxy2023-api = { module = "com.tomkeuper.bedwars:proxy-api", version = "1.0" }
+advancedban = { module = "com.github.DevLeoko:AdvancedBan", version = "v2.2.1" }
+
+[plugins]
+shadow = { id = "com.gradleup.shadow", version.ref = "shadow" }
