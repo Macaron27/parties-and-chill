@@ -18,6 +18,7 @@ public final class LocalNetwork implements Network {
 
     private final Map<UUID, String> online = new ConcurrentHashMap<>();
     private final Map<String, UUID> onlineByName = new ConcurrentHashMap<>();
+    private final Map<UUID, String> servers = new ConcurrentHashMap<>();
     // Players who left recently keep a name, so /p list and kick still work during the disconnect grace.
     private final Cache<UUID, String> recentNames;
     private final Cache<String, UUID> recentByName;
@@ -50,10 +51,25 @@ public final class LocalNetwork implements Network {
     @Override
     public void playerLeft(UUID id) {
         String name = online.remove(id);
+        servers.remove(id);
         if (name == null) return;
         onlineByName.remove(name.toLowerCase(Locale.ROOT), id);
         recentNames.put(id, name);
         recentByName.put(name.toLowerCase(Locale.ROOT), id);
+    }
+
+    @Override
+    public void serverSwitched(UUID id, String server) {
+        // Under online's lock for this key: a switch handled after the logout can't leave a stale entry behind.
+        online.computeIfPresent(id, (key, name) -> {
+            servers.put(key, server);
+            return name;
+        });
+    }
+
+    @Override
+    public Optional<String> serverOf(UUID id) {
+        return Optional.ofNullable(servers.get(id));
     }
 
     @Override

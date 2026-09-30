@@ -45,6 +45,7 @@ invite:
   denied-self: "<prefix><gray>You declined <white><player></white><gray>'s party invite."
 
 party:
+  created: "<prefix><#34d399>You created a party."
   joined: "<prefix><#34d399>You joined <white><player></white>'s party!"
   left: "<prefix><gray>You left the party."
   kicked: "<prefix><#f87171>You were removed from the party by <white><player></white>."
@@ -91,6 +92,7 @@ error:
   players-only: "<prefix><#f87171>Only players can use this command."
   usage: "<prefix><#f87171>Usage: <gray><usage>"
   player-not-found: "<prefix><#f87171>No online player named <white><player></white>."
+  player-offline: "<prefix><#f87171>That player is not online."
   not-in-party: "<prefix><#f87171>You are not in a party."
   not-leader: "<prefix><#f87171>Only the party leader can do that."
   self: "<prefix><#f87171>You can't target yourself."

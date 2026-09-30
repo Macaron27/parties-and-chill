@@ -98,7 +98,7 @@ public final class PartyChat {
         long mutedUntil = Math.max(mutedUntilHint, network.mutedUntil(sender.getUniqueId()));
         Outcome outcome = manager.chat(sender.getUniqueId(), text, mutedUntil);
         switch (outcome) {
-            case SUCCESS -> { }
+            case SUCCESS, CANCELLED -> { }
             case MUTED -> sender.sendMessage(mutedUntil == Long.MAX_VALUE
                     ? messages.render("error.muted-permanent")
                     : messages.render("error.muted", Map.of("time",

@@ -25,6 +25,7 @@ import java.util.function.Consumer;
  * {@link Network} shared by every proxy through Redis. Layout (under the prefix):
  * <ul>
  *   <li>{@code online} → hash player UUID → proxy id</li>
+ *   <li>{@code server} → hash player UUID → backend server; written and cleared only by the owning proxy</li>
  *   <li>{@code proxies} + {@code alive:<proxy>} → registered proxies and their 15 s heartbeat</li>
  *   <li>{@code name:<uuid>} / {@code uuid:<lowercase name>} → name cache</li>
  *   <li>{@code mute:<uuid>} → epoch millis the mute ends (expires with it)</li>
@@ -35,8 +36,12 @@ import java.util.function.Consumer;
  */
 public final class RedisNetwork implements Network {
 
-    private static final String HDEL_IF_OWNER =
-            "if redis.call('hget', KEYS[1], ARGV[1]) == ARGV[2] then return redis.call('hdel', KEYS[1], ARGV[1]) else return 0 end";
+    /** Releases a player (and their server entry) only if {@code ARGV[2]} still owns them. */
+    private static final String HDEL_IF_OWNER = "if redis.call('hget', KEYS[1], ARGV[1]) == ARGV[2] then "
+            + "redis.call('hdel', KEYS[2], ARGV[1]) return redis.call('hdel', KEYS[1], ARGV[1]) else return 0 end";
+    /** Same ownership check, so a switch handled after the logout can't leave a stale server entry. */
+    private static final String HSET_SERVER_IF_OWNER = "if redis.call('hget', KEYS[1], ARGV[1]) == ARGV[2] then "
+            + "return redis.call('hset', KEYS[2], ARGV[1], ARGV[3]) else return 0 end";
     private static final long HEARTBEAT_MILLIS = 5_000;
     private static final long ALIVE_TTL_MILLIS = 15_000;
 
@@ -99,6 +104,16 @@ public final class RedisNetwork implements Network {
     @Override
     public void playerLeft(UUID id) {
         releaseIfOwnedBy(id, proxyId);
+    }
+
+    @Override
+    public void serverSwitched(UUID id, String server) {
+        redis.eval(HSET_SERVER_IF_OWNER, 2, key("online"), key("server"), id.toString(), proxyId, server);
+    }
+
+    @Override
+    public Optional<String> serverOf(UUID id) {
+        return Optional.ofNullable(redis.hget(key("server"), id.toString()));
     }
 
     @Override
@@ -181,7 +196,7 @@ public final class RedisNetwork implements Network {
     }
 
     private boolean releaseIfOwnedBy(UUID player, String proxy) {
-        Object removed = redis.eval(HDEL_IF_OWNER, 1, key("online"), player.toString(), proxy);
+        Object removed = redis.eval(HDEL_IF_OWNER, 2, key("online"), key("server"), player.toString(), proxy);
         return removed instanceof Long count && count > 0;
     }
 

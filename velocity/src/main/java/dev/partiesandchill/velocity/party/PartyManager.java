@@ -1,6 +1,7 @@
 package dev.partiesandchill.velocity.party;
 
 import dev.partiesandchill.velocity.config.Durations;
+import dev.partiesandchill.velocity.party.PartyGuard.Action;
 import dev.partiesandchill.velocity.party.PartyEvent.Notice;
 import dev.partiesandchill.velocity.party.PartyEvent.PartyChanged;
 import dev.partiesandchill.velocity.party.PartyEvent.Warp;
@@ -41,7 +42,10 @@ public final class PartyManager {
         NO_INVITE("error.no-invite"),
         PARTY_FULL("error.party-full"),
         NO_ONE_TO_WARP("error.no-one-to-warp"),
-        MUTED("error.muted");
+        MUTED("error.muted"),
+        PLAYER_OFFLINE("error.player-offline"),
+        /** A backend plugin cancelled the action; like Bukkit's own events, it tells the player why. */
+        CANCELLED("");
 
         private final String messageKey;
 
@@ -61,6 +65,7 @@ public final class PartyManager {
     private final Consumer<PartyEvent> events;
     private final Predicate<UUID> isOnline;
     private final RandomGenerator random;
+    private final PartyGuard guard;
     private final Map<UUID, Long> lastMutedNotice = new ConcurrentHashMap<>();
 
     /**
@@ -70,15 +75,17 @@ public final class PartyManager {
      * @param events   receives every side effect, after the store lock is released
      * @param isOnline network-wide presence check, used to ignore stale disconnects
      * @param random   picks the new leader when a disconnected leader times out
+     * @param guard    lets backend plugins cancel create / join / disband / chat
      */
     public PartyManager(PartyStore store, PartySettings settings, Clock clock, Consumer<PartyEvent> events,
-                        Predicate<UUID> isOnline, RandomGenerator random) {
+                        Predicate<UUID> isOnline, RandomGenerator random, PartyGuard guard) {
         this.store = store;
         this.settings = settings;
         this.clock = clock;
         this.events = events;
         this.isOnline = isOnline;
         this.random = random;
+        this.guard = guard;
     }
 
     /** @return the rules this manager enforces */
@@ -101,12 +108,20 @@ public final class PartyManager {
      */
     public Outcome invite(UUID inviter, UUID target) {
         if (inviter.equals(target)) return Outcome.CANNOT_TARGET_SELF;
+        // The first invite creates the party. The vetted party is the one saved, so plugins see its real id.
+        Party created = null;
+        if (guard.watches(Action.CREATE, inviter) && store.byMember(inviter).isEmpty()) {
+            created = Party.create(inviter, clock.millis());
+            if (!guard.allows(Action.CREATE, inviter, created, "")) return Outcome.CANCELLED;
+        }
+        Party vetted = created;
         return write(out -> {
             long now = clock.millis();
             if (store.byMember(target).isPresent()) return Outcome.TARGET_IN_PARTY;
             Party original = store.byMember(inviter).orElse(null);
             if (original != null && !original.isLeader(inviter)) return Outcome.NOT_LEADER;
-            Party party = original != null ? original : Party.create(inviter, now);
+            // ponytail: a party disbanded between the check and the lock is re-created unvetted; that race is microseconds wide.
+            Party party = original != null ? original : vetted != null ? vetted : Party.create(inviter, now);
             if (party.inviteFor(target, now).isPresent()) return Outcome.ALREADY_INVITED;
             if (party.size() >= settings.maxSize()) return Outcome.PARTY_FULL;
 
@@ -123,19 +138,68 @@ public final class PartyManager {
      * Accepts the invite sent to {@code target} by the party of {@code inviter}.
      */
     public Outcome accept(UUID target, UUID inviter) {
+        if (guard.watches(Action.JOIN, target)) {
+            Party party = store.byMember(inviter).filter(p -> p.inviteFor(target, clock.millis()).isPresent()).orElse(null);
+            if (party == null) return Outcome.NO_INVITE;
+            if (!guard.allows(Action.JOIN, target, party, "")) return Outcome.CANCELLED;
+        }
         return write(out -> {
             long now = clock.millis();
             Party original = store.byMember(inviter).filter(p -> p.inviteFor(target, now).isPresent()).orElse(null);
             if (original == null) return Outcome.NO_INVITE;
             if (store.byMember(target).isPresent()) return Outcome.ALREADY_IN_PARTY;
             if (original.size() >= settings.maxSize()) return Outcome.PARTY_FULL;
-
-            Party party = original.withoutInvite(target).withMember(PartyMember.joined(target, now));
-            out.add(notice(original.memberIds(), "member.joined", Map.of("player", target)));
-            out.add(notice(Set.of(target), "party.joined", Map.of("player", party.leader())));
-            commit(original, party, out);
+            join(original, target, now, out);
             return Outcome.SUCCESS;
         });
+    }
+
+    /**
+     * (Developer API) Creates a party led by {@code leader} alone. Like any party of one, it is disbanded the next
+     * time it changes while no invite is pending (e.g. when the leader disconnects).
+     */
+    public Outcome create(UUID leader) {
+        if (!isOnline.test(leader)) return Outcome.PLAYER_OFFLINE; // an offline "online" leader would never time out
+        Party party = Party.create(leader, clock.millis());
+        if (guard.watches(Action.CREATE, leader)) {
+            if (store.byMember(leader).isPresent()) return Outcome.ALREADY_IN_PARTY;
+            if (!guard.allows(Action.CREATE, leader, party, "")) return Outcome.CANCELLED;
+        }
+        return write(out -> {
+            if (store.byMember(leader).isPresent()) return Outcome.ALREADY_IN_PARTY;
+            store.save(party); // not commit(): its lonely-party rule would delete a party of one right away
+            out.add(notice(Set.of(leader), "party.created", Map.of()));
+            out.add(new PartyChanged(party.memberIds(), party, null));
+            return Outcome.SUCCESS;
+        });
+    }
+
+    /** (Developer API, leader only) Puts {@code target} in the party right away, consuming any invite they had. */
+    public Outcome add(UUID leader, UUID target) {
+        if (leader.equals(target)) return Outcome.CANNOT_TARGET_SELF;
+        if (!isOnline.test(target)) return Outcome.PLAYER_OFFLINE;
+        if (guard.watches(Action.JOIN, target)) {
+            Party party = store.byMember(leader).orElse(null);
+            Outcome denied = checkLeader(party, leader);
+            if (denied != null) return denied;
+            if (!guard.allows(Action.JOIN, target, party, "")) return Outcome.CANCELLED;
+        }
+        return write(out -> {
+            Party original = store.byMember(leader).orElse(null);
+            Outcome denied = checkLeader(original, leader);
+            if (denied != null) return denied;
+            if (store.byMember(target).isPresent()) return Outcome.TARGET_IN_PARTY;
+            if (original.size() >= settings.maxSize()) return Outcome.PARTY_FULL;
+            join(original, target, clock.millis(), out);
+            return Outcome.SUCCESS;
+        });
+    }
+
+    private void join(Party original, UUID target, long now, List<PartyEvent> out) {
+        Party party = original.withoutInvite(target).withMember(PartyMember.joined(target, now));
+        out.add(notice(original.memberIds(), "member.joined", Map.of("player", target)));
+        out.add(notice(Set.of(target), "party.joined", Map.of("player", party.leader())));
+        commit(original, party, out);
     }
 
     /**
@@ -195,13 +259,19 @@ public final class PartyManager {
 
     /** (Leader only) Destroys the party. */
     public Outcome disband(UUID leader) {
+        if (guard.watches(Action.DISBAND, leader)) {
+            Party party = store.byMember(leader).orElse(null);
+            Outcome denied = checkLeader(party, leader);
+            if (denied != null) return denied;
+            if (!guard.allows(Action.DISBAND, leader, party, "")) return Outcome.CANCELLED;
+        }
         return write(out -> {
             Party party = store.byMember(leader).orElse(null);
-            if (party == null) return Outcome.NOT_IN_PARTY;
-            if (!party.isLeader(leader)) return Outcome.NOT_LEADER;
+            Outcome denied = checkLeader(party, leader);
+            if (denied != null) return denied;
             store.delete(party);
             out.add(notice(party.memberIds(), "disband.leader", Map.of("player", leader)));
-            out.add(new PartyChanged(party.memberIds(), null));
+            out.add(new PartyChanged(party.memberIds(), null, party));
             return Outcome.SUCCESS;
         });
     }
@@ -261,6 +331,11 @@ public final class PartyManager {
                 publish(List.of(notice(others, "chat.muted-notice", Map.of("player", sender))));
             }
             return Outcome.MUTED;
+        }
+        if (guard.watches(Action.CHAT, sender)) {
+            if (!guard.allows(Action.CHAT, sender, party, message)) return Outcome.CANCELLED;
+            party = store.byMember(sender).orElse(null); // the check can take a second: members may have changed
+            if (party == null) return Outcome.NOT_IN_PARTY;
         }
         publish(List.of(notice(party.memberIds(), "chat.format", Map.of("player", sender), Map.of("message", message))));
         return Outcome.SUCCESS;
@@ -343,7 +418,7 @@ public final class PartyManager {
      */
     private Party drop(Party party, UUID player, List<PartyEvent> out, String key, Map<String, UUID> placeholders,
                        boolean randomSuccessor) {
-        out.add(new PartyChanged(Set.of(player), null));
+        out.add(new PartyChanged(Set.of(player), null, party));
         if (party.size() == 1) return null;
         boolean leaderLeft = party.isLeader(player);
         UUID next = leaderLeft ? successor(party, player, randomSuccessor) : party.leader();
@@ -374,19 +449,25 @@ public final class PartyManager {
         if (party.size() <= 1 && party.invites().isEmpty()) {
             store.delete(party);
             out.add(notice(party.memberIds(), "disband.empty", Map.of()));
-            out.add(new PartyChanged(party.memberIds(), null));
+            out.add(new PartyChanged(party.memberIds(), null, party));
             return;
         }
         store.save(party);
         boolean changed = original == null
                 || !original.memberIds().equals(party.memberIds())
                 || !original.leader().equals(party.leader());
-        if (changed) out.add(new PartyChanged(party.memberIds(), party));
+        if (changed) out.add(new PartyChanged(party.memberIds(), party, null));
+    }
+
+    private static Outcome checkLeader(Party party, UUID leader) {
+        if (party == null) return Outcome.NOT_IN_PARTY;
+        if (!party.isLeader(leader)) return Outcome.NOT_LEADER;
+        return null;
     }
 
     private static Outcome checkLeaderTargeting(Party party, UUID leader, UUID target) {
-        if (party == null) return Outcome.NOT_IN_PARTY;
-        if (!party.isLeader(leader)) return Outcome.NOT_LEADER;
+        Outcome denied = checkLeader(party, leader);
+        if (denied != null) return denied;
         if (leader.equals(target)) return Outcome.CANNOT_TARGET_SELF;
         if (!party.isMember(target)) return Outcome.TARGET_NOT_IN_PARTY;
         return null;

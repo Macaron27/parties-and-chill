@@ -1,6 +1,6 @@
 rootProject.name = "parties-and-chill"
 
-include("velocity", "paper-bridge")
+include("api", "velocity", "paper-bridge")
 
 dependencyResolutionManagement {
     repositories {

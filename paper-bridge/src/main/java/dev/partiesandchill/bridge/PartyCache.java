@@ -8,8 +8,9 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Party data the proxy pushed for players on this server. Registered in Bukkit's {@code ServicesManager},
- * so other backend plugins can read parties too:
+ * Party data the proxy pushed for players on this server. Superseded by
+ * {@link dev.partiesandchill.api.NetworkPartiesAPI} for other plugins; it stays registered in Bukkit's
+ * {@code ServicesManager} for plugins written against 1.0:
  * <pre>{@code PartyCache parties = Bukkit.getServicesManager().load(PartyCache.class);}</pre>
  * Read-only: parties are changed on the proxy ({@code /party}).
  */

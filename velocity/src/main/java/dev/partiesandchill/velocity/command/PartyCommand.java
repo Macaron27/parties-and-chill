@@ -59,7 +59,7 @@ public final class PartyCommand implements SimpleCommand {
         executor.execute(() -> {
             try {
                 Outcome outcome = handle(player, args);
-                if (outcome != Outcome.SUCCESS) player.sendMessage(messages.render(outcome.messageKey()));
+                if (outcome != Outcome.SUCCESS && outcome != Outcome.CANCELLED) player.sendMessage(messages.render(outcome.messageKey()));
             } catch (RuntimeException e) {
                 logger.error("/party {} failed for {}", String.join(" ", args), player.getUsername(), e);
                 player.sendMessage(messages.render("error.unavailable"));

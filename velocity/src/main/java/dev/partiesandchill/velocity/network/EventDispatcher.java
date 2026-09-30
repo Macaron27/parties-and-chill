@@ -4,6 +4,7 @@ import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.ProxyServer;
 import com.velocitypowered.api.proxy.server.RegisteredServer;
 import dev.partiesandchill.velocity.bridge.BridgeChannel;
+import dev.partiesandchill.velocity.bridge.BridgeMessage;
 import dev.partiesandchill.velocity.chat.PartyChat;
 import dev.partiesandchill.velocity.config.Messages;
 import dev.partiesandchill.velocity.party.Party;
@@ -54,9 +55,18 @@ public final class EventDispatcher implements Consumer<PartyEvent> {
             case PartyChanged changed -> changed.affected().forEach(id -> proxy.getPlayer(id).ifPresent(player -> {
                 Party party = changed.party();
                 bridge.sendSnapshot(player, party);
-                if (party == null || !party.isMember(id)) chat.unlock(player);
+                if (party == null || !party.isMember(id)) {
+                    chat.unlock(player);
+                    if (changed.previous() != null) notifyLeft(player, changed.previous());
+                }
             }));
         }
+    }
+
+    /** Fires the leave event on the player's backend, if a plugin there listens to it. */
+    private void notifyLeft(Player player, Party previous) {
+        player.getCurrentServer().filter(server -> bridge.listens(server, BridgeMessage.EVENT_LEAVE)).ifPresent(server ->
+                BridgeChannel.send(server, new BridgeMessage.Left(player.getUniqueId(), BridgeChannel.info(previous, network))));
     }
 
     private void deliver(Notice notice) {
