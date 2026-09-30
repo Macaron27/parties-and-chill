@@ -5,24 +5,28 @@ import com.velocitypowered.api.event.player.ServerPostConnectEvent;
 import com.velocitypowered.api.proxy.Player;
 import dev.partiesandchill.velocity.bridge.BridgeChannel;
 import dev.partiesandchill.velocity.chat.PartyChat;
+import dev.partiesandchill.velocity.network.Network;
 import dev.partiesandchill.velocity.party.Party;
 import dev.partiesandchill.velocity.party.PartyManager;
 
 import java.util.concurrent.ExecutorService;
 
 /**
- * After every server switch: refresh the new backend's party snapshot and chat lock, then auto-warp the
- * party if its leader just entered a game server.
+ * After every server switch: record the player's server (developer API {@code Party#getServer}), refresh the new
+ * backend's party snapshot and chat lock, then auto-warp the party if its leader just entered a game server.
  */
 public final class ServerSwitchListener {
 
     private final PartyManager manager;
+    private final Network network;
     private final BridgeChannel bridge;
     private final PartyChat chat;
     private final ExecutorService executor;
 
-    public ServerSwitchListener(PartyManager manager, BridgeChannel bridge, PartyChat chat, ExecutorService executor) {
+    public ServerSwitchListener(PartyManager manager, Network network, BridgeChannel bridge, PartyChat chat,
+                                ExecutorService executor) {
         this.manager = manager;
+        this.network = network;
         this.bridge = bridge;
         this.chat = chat;
         this.executor = executor;
@@ -32,6 +36,7 @@ public final class ServerSwitchListener {
     public void onServerSwitched(ServerPostConnectEvent event) {
         Player player = event.getPlayer();
         executor.execute(() -> player.getCurrentServer().ifPresent(server -> {
+            network.serverSwitched(player.getUniqueId(), server.getServerInfo().getName());
             Party party = manager.partyOf(player.getUniqueId()).orElse(null);
             bridge.sendSnapshot(player, party);
             chat.serverSwitched(player);

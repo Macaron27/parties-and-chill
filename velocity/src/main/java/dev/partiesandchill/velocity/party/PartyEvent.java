@@ -45,8 +45,10 @@ public sealed interface PartyEvent {
      *
      * @param affected players whose party view changed
      * @param party    the party now, or {@code null} if it was disbanded (or they left it)
+     * @param previous when they left: the party as it was before (for backend leave events), otherwise {@code null}.
+     *                 Proxies of an older version ignore the field and see {@code null}.
      */
-    record PartyChanged(Set<UUID> affected, Party party) implements PartyEvent {
+    record PartyChanged(Set<UUID> affected, Party party, Party previous) implements PartyEvent {
         public PartyChanged {
             affected = Set.copyOf(affected);
         }

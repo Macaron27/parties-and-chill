@@ -1,5 +1,6 @@
 plugins {
     java
+    alias(libs.plugins.shadow)
 }
 
 java {
@@ -7,6 +8,9 @@ java {
 }
 
 dependencies {
+    // The developer API other plugins compile against; its classes ship inside the bridge jar.
+    implementation(project(":api"))
+
     // Compiled against the oldest API so one jar loads on 1.8.8 -> 26.3 backends.
     compileOnly(libs.spigot.api) { isTransitive = false }
     compileOnly("com.google.guava:guava:17.0") // 1.8.8 ships guava 17; spigot-api is non-transitive above
@@ -40,8 +44,16 @@ tasks {
         inputs.property("version", version)
         filesMatching("plugin.yml") { expand("version" to version) }
     }
+    shadowJar {
+        archiveBaseName = "PartiesAndChill-Bridge"
+        archiveClassifier = ""
+    }
     jar {
         archiveBaseName = "PartiesAndChill-Bridge"
+        archiveClassifier = "plain" // lacks the API classes; ship the shadow jar
+    }
+    build {
+        dependsOn(shadowJar)
     }
     test {
         useJUnitPlatform()

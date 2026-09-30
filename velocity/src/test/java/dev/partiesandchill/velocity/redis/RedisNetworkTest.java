@@ -79,6 +79,7 @@ class RedisNetworkTest {
     void playersOfADeadProxyEnterTheGracePeriod() {
         redis.sadd("net:proxies", "ghost");
         redis.hset("net:online", ALICE.toString(), "ghost"); // registered, but "ghost" never heart-beats
+        redis.hset("net:server", ALICE.toString(), "bw-1");
         RedisNetwork b = proxy("b");
         BlockingQueue<UUID> lost = new ArrayBlockingQueue<>(4);
         b.onPlayersLost(lost::add);
@@ -87,6 +88,7 @@ class RedisNetworkTest {
         assertFalse(b.isOnline(ALICE), "no heartbeat = not online");
         b.refreshProxies();
         assertEquals(ALICE, lost.poll());
+        assertEquals(Optional.empty(), b.serverOf(ALICE), "reaping clears the server too");
         assertTrue(lost.isEmpty());
         assertFalse(redis.sismember("net:proxies", "ghost"));
     }
@@ -137,10 +139,37 @@ class RedisNetworkTest {
         assertEquals(party, Json.party(Json.party(party)));
         for (PartyEvent event : List.of(
                 new PartyEvent.Warp(Set.of(ALICE), "bw-1", 1000),
-                new PartyEvent.PartyChanged(Set.of(ALICE), party),
-                new PartyEvent.PartyChanged(Set.of(ALICE), null))) {
+                new PartyEvent.PartyChanged(Set.of(ALICE), party, null),
+                new PartyEvent.PartyChanged(Set.of(ALICE), null, party))) {
             assertEquals(event, Json.event(Json.event(event)));
         }
+    }
+
+    @Test
+    void partyChangedStaysCompatibleAcrossProxyVersions() {
+        // From a 1.0 proxy: no "previous".
+        assertEquals(new PartyEvent.PartyChanged(Set.of(ALICE), null, null),
+                Json.event("{\"type\":\"PartyChanged\",\"data\":{\"affected\":[\"" + ALICE + "\"],\"party\":null}}"));
+        // What 1.0 proxies rely on to read ours: fields they don't know are ignored.
+        assertEquals(new PartyEvent.PartyChanged(Set.of(), null, null),
+                Json.event("{\"type\":\"PartyChanged\",\"data\":{\"affected\":[],\"party\":null,\"future\":1}}"));
+    }
+
+    @Test
+    void serversAreTrackedByTheOwningProxyOnly() {
+        RedisNetwork a = proxy("a"), b = proxy("b");
+        a.start(e -> { });
+        b.start(e -> { });
+        a.playerJoined(ALICE, "Alice");
+        a.serverSwitched(ALICE, "bw-1");
+        assertEquals(Optional.of("bw-1"), b.serverOf(ALICE));
+
+        b.serverSwitched(ALICE, "lobby"); // stale: ALICE isn't b's player
+        assertEquals(Optional.of("bw-1"), a.serverOf(ALICE));
+        a.playerLeft(ALICE);
+        assertEquals(Optional.empty(), b.serverOf(ALICE));
+        a.serverSwitched(ALICE, "bw-2"); // handled after the logout
+        assertEquals(Optional.empty(), a.serverOf(ALICE));
     }
 
     @Test

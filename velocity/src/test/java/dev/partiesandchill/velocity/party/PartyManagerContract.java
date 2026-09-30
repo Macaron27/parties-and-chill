@@ -3,6 +3,7 @@ package dev.partiesandchill.velocity.party;
 import dev.partiesandchill.velocity.party.PartyEvent.Notice;
 import dev.partiesandchill.velocity.party.PartyEvent.PartyChanged;
 import dev.partiesandchill.velocity.party.PartyEvent.Warp;
+import dev.partiesandchill.velocity.party.PartyGuard.Action;
 import dev.partiesandchill.velocity.party.PartyManager.Outcome;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -34,6 +35,7 @@ abstract class PartyManagerContract {
     final MutableClock clock = new MutableClock();
     final List<PartyEvent> events = new CopyOnWriteArrayList<>();
     final Set<UUID> onlineElsewhere = ConcurrentHashMap.newKeySet();
+    final RecordingGuard guard = new RecordingGuard();
     final PartySettings settings = new PartySettings(4, Duration.ofSeconds(60), Duration.ofMinutes(5),
             Duration.ofSeconds(1), List.of("bw-*"), Duration.ofSeconds(30));
     PartyStore store;
@@ -45,7 +47,7 @@ abstract class PartyManagerContract {
     @BeforeEach
     void setUp() {
         store = newStore();
-        manager = new PartyManager(store, settings, clock, events::add, onlineElsewhere::contains, new Random(42));
+        manager = new PartyManager(store, settings, clock, events::add, onlineElsewhere::contains, new Random(42), guard);
     }
 
     // --- invites --------------------------------------------------------------------------------------
@@ -207,7 +209,7 @@ abstract class PartyManagerContract {
         assertEquals(Outcome.SUCCESS, manager.disband(ALICE));
         assertNotice("disband.leader", BOB);
         assertTrue(manager.partyOf(BOB).isEmpty());
-        assertTrue(events.contains(new PartyChanged(Set.of(ALICE, BOB), null)));
+        assertLeft(Set.of(ALICE, BOB), List.of(ALICE, BOB));
     }
 
     // --- warping --------------------------------------------------------------------------------------
@@ -333,7 +335,130 @@ abstract class PartyManagerContract {
         assertEquals(2, count("chat.muted-notice"));
     }
 
+    // --- developer API --------------------------------------------------------------------------------
+
+    @Test
+    void createMakesAPartyOfOneThatLastsUntilItChanges() {
+        assertEquals(Outcome.PLAYER_OFFLINE, manager.create(ALICE));
+        onlineElsewhere.add(ALICE);
+        assertEquals(Outcome.SUCCESS, manager.create(ALICE));
+
+        Party party = manager.partyOf(ALICE).orElseThrow();
+        assertEquals(List.of(ALICE), List.copyOf(party.memberIds()));
+        assertNotice("party.created", ALICE);
+        assertTrue(events.contains(new PartyChanged(Set.of(ALICE), party, null)), "backend gets the snapshot");
+        assertEquals(Outcome.ALREADY_IN_PARTY, manager.create(ALICE));
+        manager.tick();
+        assertTrue(manager.partyOf(ALICE).isPresent(), "nothing is due for a party of one");
+
+        assertEquals(Outcome.SUCCESS, manager.invite(ALICE, BOB));
+        assertEquals(party.id(), manager.partyOf(ALICE).orElseThrow().id(), "invites reuse the created party");
+        assertEquals(Outcome.SUCCESS, manager.deny(BOB, ALICE));
+        assertNotice("disband.empty", ALICE);
+        assertTrue(manager.partyOf(ALICE).isEmpty());
+    }
+
+    @Test
+    void addPutsOnlinePlayersStraightIn() {
+        onlineElsewhere.addAll(Set.of(BOB, CAROL, DAVE));
+        assertEquals(Outcome.NOT_IN_PARTY, manager.add(ALICE, BOB));
+        manager.invite(ALICE, BOB);
+        events.clear();
+
+        assertEquals(Outcome.SUCCESS, manager.add(ALICE, BOB));
+        Party party = manager.partyOf(BOB).orElseThrow();
+        assertEquals(List.of(ALICE, BOB), List.copyOf(party.memberIds()));
+        assertTrue(party.invites().isEmpty(), "the pending invite is consumed");
+        assertNotice("member.joined", ALICE);
+        assertNotice("party.joined", BOB);
+
+        assertEquals(Outcome.CANNOT_TARGET_SELF, manager.add(ALICE, ALICE));
+        assertEquals(Outcome.NOT_LEADER, manager.add(BOB, CAROL));
+        assertEquals(Outcome.TARGET_IN_PARTY, manager.add(ALICE, BOB));
+        assertEquals(Outcome.PLAYER_OFFLINE, manager.add(ALICE, UUID.randomUUID()));
+        assertEquals(Outcome.SUCCESS, manager.add(ALICE, CAROL));
+        assertEquals(Outcome.SUCCESS, manager.add(ALICE, DAVE));
+        UUID erin = UUID.randomUUID();
+        onlineElsewhere.add(erin);
+        assertEquals(Outcome.PARTY_FULL, manager.add(ALICE, erin));
+    }
+
+    @Test
+    void backendPluginsCanCancelCreateJoinDisbandAndChat() {
+        onlineElsewhere.addAll(Set.of(ALICE, BOB));
+        guard.cancelled.add(Action.CREATE);
+        assertEquals(Outcome.CANCELLED, manager.invite(ALICE, BOB));
+        assertEquals(Outcome.CANCELLED, manager.create(ALICE));
+        assertTrue(manager.partyOf(ALICE).isEmpty());
+        assertTrue(events.isEmpty(), "a cancelled action has no side effect: " + events);
+
+        guard.cancelled.clear();
+        manager.invite(ALICE, BOB);
+        RecordingGuard.Check create = guard.last();
+        assertEquals(new RecordingGuard.Check(Action.CREATE, ALICE, List.of(ALICE), ""), create.withoutParty());
+        assertEquals(manager.partyOf(ALICE).orElseThrow().id(), create.party().id(), "plugins see the real party id");
+
+        guard.cancelled.add(Action.JOIN);
+        assertEquals(Outcome.CANCELLED, manager.accept(BOB, ALICE));
+        assertEquals(Outcome.CANCELLED, manager.add(ALICE, BOB));
+        assertTrue(manager.partyOf(BOB).isEmpty());
+        assertTrue(manager.partyOf(ALICE).orElseThrow().inviteFor(BOB, clock.millis()).isPresent(), "invite kept");
+        assertEquals(new RecordingGuard.Check(Action.JOIN, BOB, List.of(ALICE), ""), guard.last().withoutParty());
+
+        guard.cancelled.clear();
+        manager.accept(BOB, ALICE);
+        guard.cancelled.addAll(Set.of(Action.DISBAND, Action.CHAT));
+        events.clear();
+        assertEquals(Outcome.CANCELLED, manager.disband(ALICE));
+        assertEquals(Outcome.CANCELLED, manager.chat(BOB, "gg", 0));
+        assertEquals(new RecordingGuard.Check(Action.CHAT, BOB, List.of(ALICE, BOB), "gg"), guard.last().withoutParty());
+        assertEquals(List.of(ALICE, BOB), List.copyOf(manager.partyOf(ALICE).orElseThrow().memberIds()));
+        assertTrue(events.isEmpty(), "no chat line, no disband: " + events);
+    }
+
+    @Test
+    void chatReachesThePartyAsItIsAfterTheCheck() {
+        join(ALICE, BOB);
+        join(ALICE, CAROL);
+        guard.duringCheck = () -> manager.kick(ALICE, CAROL); // while the backend decides
+        assertEquals(Outcome.SUCCESS, manager.chat(BOB, "hi", 0));
+        assertEquals(Set.of(ALICE, BOB), notice("chat.format").recipients());
+    }
+
+    @Test
+    void failedPreconditionsAndUnwatchedPlayersSkipTheGuard() {
+        assertEquals(Outcome.NO_INVITE, manager.accept(BOB, ALICE));
+        assertEquals(Outcome.NOT_IN_PARTY, manager.disband(ALICE));
+        assertTrue(guard.checks.isEmpty(), "no event for actions that can't happen");
+
+        guard.watching = false;
+        guard.cancelled.addAll(Set.of(Action.values()));
+        join(ALICE, BOB);
+        assertEquals(Outcome.SUCCESS, manager.chat(BOB, "hi", 0));
+        assertEquals(Outcome.SUCCESS, manager.disband(ALICE));
+        assertTrue(guard.checks.isEmpty());
+    }
+
+    @Test
+    void everyoneWhoLeavesAPartyIsReportedWithIt() {
+        join(ALICE, BOB);
+        join(ALICE, CAROL);
+        manager.kick(ALICE, CAROL);
+        assertLeft(Set.of(CAROL), List.of(ALICE, BOB, CAROL));
+        manager.leave(BOB);
+        assertLeft(Set.of(BOB), List.of(ALICE, BOB));
+        assertLeft(Set.of(ALICE), List.of(ALICE));
+        assertTrue(events.stream().noneMatch(e -> e instanceof PartyChanged c && c.party() != null && c.previous() != null));
+    }
+
     // --- helpers --------------------------------------------------------------------------------------
+
+    /** Asserts a "they left" snapshot for {@code players}, carrying the party as it was ({@code members}). */
+    void assertLeft(Set<UUID> players, List<UUID> members) {
+        assertTrue(events.stream().anyMatch(e -> e instanceof PartyChanged c && c.party() == null
+                        && c.affected().equals(players) && List.copyOf(c.previous().memberIds()).equals(members)),
+                () -> "expected " + players + " to leave " + members + " in " + events);
+    }
 
     void join(UUID leader, UUID member) {
         assertEquals(Outcome.SUCCESS, manager.invite(leader, member));
@@ -352,6 +477,42 @@ abstract class PartyManagerContract {
     void assertNotice(String key, UUID recipient) {
         assertTrue(events.stream().anyMatch(e -> e instanceof Notice n && n.key().equals(key) && n.recipients().contains(recipient)),
                 () -> "expected notice " + key + " for " + recipient + " in " + events);
+    }
+
+    /** Records every check; cancels the actions in {@link #cancelled}. */
+    static final class RecordingGuard implements PartyGuard {
+        record Check(Action action, UUID player, Party party, List<UUID> members, String message) {
+            Check(Action action, UUID player, List<UUID> members, String message) {
+                this(action, player, null, members, message);
+            }
+
+            Check withoutParty() {
+                return new Check(action, player, members, message);
+            }
+        }
+
+        final List<Check> checks = new CopyOnWriteArrayList<>();
+        final Set<Action> cancelled = ConcurrentHashMap.newKeySet();
+        volatile boolean watching = true;
+        volatile Runnable duringCheck = () -> { };
+
+        @Override
+        public boolean watches(Action action, UUID player) {
+            return watching;
+        }
+
+        @Override
+        public boolean allows(Action action, UUID player, Party party, String message) {
+            checks.add(new Check(action, player, party, List.copyOf(party.memberIds()), message));
+            Runnable during = duringCheck;
+            duringCheck = () -> { };
+            during.run();
+            return !cancelled.contains(action);
+        }
+
+        Check last() {
+            return checks.getLast();
+        }
     }
 
     static final class MutableClock extends Clock {

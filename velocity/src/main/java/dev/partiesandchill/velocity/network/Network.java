@@ -26,6 +26,12 @@ public interface Network extends AutoCloseable {
     /** Unregisters a player who left this proxy (no-op if they are already registered on another proxy). */
     void playerLeft(UUID id);
 
+    /** Records the backend a player of this proxy just switched to (ignored once they left the proxy). */
+    void serverSwitched(UUID id, String server);
+
+    /** @return the backend server an online player is on */
+    Optional<String> serverOf(UUID id);
+
     /** @return {@code true} if the player is connected to any proxy of the network */
     boolean isOnline(UUID id);
 

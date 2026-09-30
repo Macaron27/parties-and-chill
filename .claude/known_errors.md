@@ -34,3 +34,27 @@ Consult before architectural changes.
 - **Tried:** sending Lua scripts by SHA-1 (`EVALSHA` + `NOSCRIPT` fallback) instead of `EVAL`.
 - **Measured:** party lookup 46–48 µs with `EVAL` vs 48–58 µs with `EVALSHA` on localhost: noise. Reverted to keep `EVAL`.
 - **What did help:** fewer round trips (Lua member→party lookup, reusing snapshots read under the lock, `ZCOUNT` pre-check, cached live-proxy set). See the redis/ package.
+
+## Async Bukkit events fired from the main thread throw
+- **Error:** `SimplePluginManager#callEvent` throws `IllegalStateException` ("cannot be triggered asynchronously from primary server thread") for `Event(true)` subclasses; plugin messages arrive on the main thread. Verified in the 1.8.8 jar's bytecode.
+- **Fix:** the bridge fires developer API events through `runTaskAsynchronously`, then sends the verdict with `runSync`.
+
+## Cancelling a CompletableFuture doesn't cancel what `thenApply` derived from it
+- **Error:** `BridgeApi#close` cancelled the pending futures, but callers hold `thenApply` futures, whose `isCancelled()` stays `false` (they fail with a wrapped `CancellationException`).
+- **Fix:** fail pending requests with `completeExceptionally(new CancellationException(...))` and document failure *causes*, not future states.
+
+## RedisNetwork#start already reaps dead proxies
+- **Error:** a test seeded `net:server` after `start()` and expected `refreshProxies()` to clear it; `start()` had already reaped the ghost proxy.
+- **Fix:** seed Redis state before `start()` in tests.
+
+## A 1.0 proxy rejects a 1.1 bridge's hello
+- **Error:** protocol 2's hello carries a listener mask; the 1.0 decoder sees trailing bytes and drops the whole hello.
+- **Fix:** the 1.1 decoder accepts both hello shapes; the README says to upgrade proxies before backends.
+
+## Registering `pnc:main` inside the async startup left it open on failure
+- **Error:** if `start()` failed (e.g. Redis down), the channel was never registered, so Velocity forwarded clients' `pnc:main` messages to backends, where they could forge snapshots, checks or API replies.
+- **Fix:** register the channel in `onInitialize` before any I/O, and mark it handled from the plugin class itself (`PartiesAndChill#onPluginMessage`).
+
+## Verdicts through "any online player" can reach the wrong proxy
+- **Error:** with Redis, another player on the backend may be on another proxy, whose own check ids can collide.
+- **Fix:** verdicts only go back through the checked player (no answer = the proxy allows after 1 s); ids start at random values on both sides.
