@@ -33,7 +33,7 @@ import java.util.UUID;
 @Plugin(
         id = "partiesandchill",
         name = "Parties & Chill",
-        version = "1.2.0", // checked against the Gradle version by PluginDescriptorTest
+        version = "1.3.0", // checked against the Gradle version by PluginDescriptorTest
         description = "Hypixel-style parties for Velocity networks",
         authors = {"Parties & Chill"})
 public final class PartiesAndChill implements ProxyPlatform {
@@ -70,7 +70,7 @@ public final class PartiesAndChill implements ProxyPlatform {
         CommandManager commands = proxy.getCommandManager();
         commands.register(commands.metaBuilder("party").aliases("p").plugin(this).build(),
                 new VelocityCommand(this, core, core.partyCommand()));
-        commands.register(commands.metaBuilder("pchat").aliases("pc").plugin(this).build(),
+        commands.register(commands.metaBuilder("pchat").aliases("pc", "party-chat").plugin(this).build(),
                 new VelocityCommand(this, core, core.chatCommand()));
         this.core = core;
     }

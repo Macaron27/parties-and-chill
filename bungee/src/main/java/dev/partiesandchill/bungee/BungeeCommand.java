@@ -19,8 +19,8 @@ final class BungeeCommand extends Command implements TabExecutor {
     private final PartiesCore core;
     private final ProxyCommand command;
 
-    BungeeCommand(String name, String alias, PartiesCore core, ProxyCommand command) {
-        super(name, null, alias);
+    BungeeCommand(String name, PartiesCore core, ProxyCommand command, String... aliases) {
+        super(name, null, aliases);
         this.core = core;
         this.command = command;
     }

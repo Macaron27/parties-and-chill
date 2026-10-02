@@ -5,21 +5,58 @@
 # Every chat line lives in messages.yml.
 
 party:
-  # Maximum members, leader included.
+  # Maximum members, owner included, for owners without any size permission below.
   max-size: 8
+  # Bigger parties by permission (LuckPerms or any permission plugin of the proxy).
+  # "permission: size"; an owner with several gets the biggest. Sizes: 2 – 1024.
+  permission-sizes:
+    parties.size.12: 12 # e.g. VIP
+    parties.size.16: 16 # e.g. MVP
+    parties.size.24: 24 # e.g. MVP++
   # How long an invite can be accepted.
   invite-timeout: 60s
-  # How long a disconnected member keeps their slot. A disconnected leader
-  # is replaced by a random online member once this runs out.
+  # How long a disconnected member keeps their slot. A disconnected owner
+  # is replaced by a random online moderator (or member) once this runs out.
   disconnect-grace: 5m
+  # Settings every new party starts with. Owners change their own with /p settings
+  # (max size, mute and slow mode always start off).
+  defaults:
+    # Members follow the owner (and moderators allowed to start games) into game servers.
+    auto-warp: true
+    # Party chat enabled.
+    chat: true
+    # Plain members may invite.
+    all-invite: false
+    # Plain members may /p warp.
+    all-warp: false
+    # Anyone may /p join without an invite.
+    public: false
+
+roles:
+  # What moderators may do. Owners may do everything; plain members only what
+  # their party's settings allow (all-invite, all-warp).
+  moderator:
+    invite: true
+    # Moderators only kick plain members.
+    kick: true
+    warp: true
+    # Promote members to moderator (making someone owner stays the owner's call).
+    promote: false
+    # /p settings, except mute and slow mode.
+    settings: false
+    # Entering a game server pulls the plain members along (auto-warp). The owner pulls
+    # everyone; moderators never pull the owner or each other.
+    start-games: true
+    # /p settings mute and /p settings slowmode.
+    chat-moderation: true
 
 auto-warp:
-  # Members follow the leader when the leader joins one of these servers.
+  # Network-wide switch; each party can also turn it off (/p settings autowarp).
   enabled: true
   # Delay before members are sent, so the backend isn't flooded at once.
   delay: 1s
   # Server names (as in velocity.toml / BungeeCord's config.yml). Globs: * = anything, ? = one character.
-  # Lobbies should NOT be listed: parties only follow the leader into games.
+  # Lobbies should NOT be listed: parties only follow into games.
   servers:
     - "bw-*"
     - "sw-*"
@@ -29,6 +66,16 @@ chat:
   # A muted player (AdvancedBan, reported by the backend bridge) cannot use
   # party chat; their party sees an "I am muted" notice at most this often.
   muted-notice-cooldown: 30s
+  # Hover timestamp of party chat lines, in this proxy's time zone.
+  # Pattern letters: https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/time/format/DateTimeFormatter.html
+  timestamp-format: "HH:mm:ss"
+  mention:
+    # Played to players tagged with @name (needs the backend bridge). A Bukkit Sound name
+    # (1.8 names are mapped from modern ones) or a namespaced key such as "minecraft:block.note_block.pling".
+    # Empty = no sound; the action bar is still shown.
+    sound: ENTITY_EXPERIENCE_ORB_PICKUP
+    volume: 1.0
+    pitch: 1.0
 
 redis:
   # Enable to share parties between several proxies.

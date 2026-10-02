@@ -20,10 +20,13 @@ public final class BridgeProtocol {
 
     /** Short enough for 1.8's 20-character limit, namespaced for 1.13+. */
     public static final String CHANNEL = "pnc:main";
-    /** 2: developer API (requests, event checks, leave notices) and the listener mask in hello. */
-    public static final int VERSION = 2;
+    /**
+     * 2: developer API (requests, event checks, leave notices) and the listener mask in hello.
+     * 3: sounds (party chat mentions); the proxy only sends them to bridges of protocol 3+.
+     */
+    public static final int VERSION = 3;
 
-    static final int SNAPSHOT = 1, CHAT_LOCK = 2, REPLY = 3, CHECK = 4, LEFT = 5,
+    static final int SNAPSHOT = 1, CHAT_LOCK = 2, REPLY = 3, CHECK = 4, LEFT = 5, SOUND = 6,
             HELLO = 10, CHAT = 11, MUTE = 12, REQUEST = 13, VERDICT = 14;
     /** Events: {@link Incoming#code} of checks, and bits ({@code 1 << code}) of the hello listener mask. */
     public static final int EVENT_CREATE = 0, EVENT_JOIN = 1, EVENT_DISBAND = 2, EVENT_CHAT = 3, EVENT_LEAVE = 4;
@@ -50,19 +53,25 @@ public final class BridgeProtocol {
         public final int code;
         /** Replies (may be {@code null}), checks and leave notices. */
         public final Party party;
-        /** Checks: the chat line ({@code ""} for other events). */
+        /** Checks: the chat line ({@code ""} for other events). Sounds: the sound name. */
         public final String message;
+        /** Sounds only. */
+        public final float volume, pitch;
 
         Incoming(int type, UUID player, UUID leader, List<UUID> members, boolean locked) {
-            this(type, player, leader, members, locked, 0, 0, null, "");
+            this(type, player, leader, members, locked, 0, 0, null, "", 0, 0);
         }
 
         Incoming(int type, int id, int code, UUID player, Party party, String message) {
-            this(type, player, null, Collections.<UUID>emptyList(), false, id, code, party, message);
+            this(type, player, null, Collections.<UUID>emptyList(), false, id, code, party, message, 0, 0);
+        }
+
+        Incoming(int type, UUID player, String sound, float volume, float pitch) {
+            this(type, player, null, Collections.<UUID>emptyList(), false, 0, 0, null, sound, volume, pitch);
         }
 
         private Incoming(int type, UUID player, UUID leader, List<UUID> members, boolean locked, int id, int code,
-                         Party party, String message) {
+                         Party party, String message, float volume, float pitch) {
             this.type = type;
             this.player = player;
             this.leader = leader;
@@ -72,6 +81,8 @@ public final class BridgeProtocol {
             this.code = code;
             this.party = party;
             this.message = message;
+            this.volume = volume;
+            this.pitch = pitch;
         }
     }
 
@@ -103,6 +114,11 @@ public final class BridgeProtocol {
             } else if (type == LEFT) {
                 UUID player = uuid(in);
                 message = new Incoming(type, 0, 0, player, party(in), "");
+            } else if (type == SOUND) {
+                UUID player = uuid(in);
+                String sound = in.readUTF();
+                float volume = in.readFloat();
+                message = new Incoming(type, player, sound, volume, in.readFloat());
             } else {
                 throw new IllegalArgumentException("unexpected bridge message type " + type);
             }

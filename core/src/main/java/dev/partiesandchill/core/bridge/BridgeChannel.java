@@ -14,12 +14,16 @@ public final class BridgeChannel {
     /** Short enough for 1.8's 20-character channel limit, namespaced for 1.13+. */
     public static final String CHANNEL = "pnc:main";
 
-    /** Backends running the bridge → events their plugins listen to ({@link BridgeMessage.Hello#listeners()}). */
-    private final Map<String, Integer> bridgedServers = new ConcurrentHashMap<>();
+    /** What a backend's bridge said in its {@link BridgeMessage.Hello}. */
+    private record Bridged(int protocol, int listeners) {
+    }
 
-    /** Remembers that {@code server} runs the bridge (it said hello) and which events its plugins listen to. */
-    public void markBridged(String server, int listeners) {
-        bridgedServers.put(server, listeners);
+    /** Backends running the bridge → its protocol and the events their plugins listen to. */
+    private final Map<String, Bridged> bridgedServers = new ConcurrentHashMap<>();
+
+    /** Remembers that {@code server} runs the bridge (it said hello), its protocol and which events its plugins listen to. */
+    public void markBridged(String server, int protocol, int listeners) {
+        bridgedServers.put(server, new Bridged(protocol, listeners));
     }
 
     /** @return {@code true} if the player's current backend runs the bridge */
@@ -29,12 +33,26 @@ public final class BridgeChannel {
 
     /** Stops asking {@code server} about events until its next hello (it stopped answering). */
     public void stopAsking(String server) {
-        bridgedServers.computeIfPresent(server, (name, listeners) -> 0);
+        bridgedServers.computeIfPresent(server, (name, bridged) -> new Bridged(bridged.protocol(), 0));
     }
 
     /** @return {@code true} if plugins on {@code server} listen to {@code event} ({@code BridgeMessage.EVENT_*}) */
     public boolean listens(String server, int event) {
-        return (bridgedServers.getOrDefault(server, 0) & 1 << event) != 0;
+        Bridged bridged = bridgedServers.get(server);
+        return bridged != null && (bridged.listeners() & 1 << event) != 0;
+    }
+
+    /**
+     * Plays {@code sound} to {@code player} if their backend's bridge can (protocol 3+); older bridges would log the
+     * unknown message.
+     */
+    public void sendSound(ProxyPlayer player, String sound, float volume, float pitch) {
+        player.backend().ifPresent(backend -> {
+            Bridged bridged = bridgedServers.get(backend.name());
+            if (bridged != null && bridged.protocol() >= BridgeMessage.PROTOCOL_SOUNDS) {
+                send(backend, new BridgeMessage.Sound(player.uniqueId(), sound, volume, pitch));
+            }
+        });
     }
 
     /** @return {@code party} as backend plugins see it, with the server its leader is on */

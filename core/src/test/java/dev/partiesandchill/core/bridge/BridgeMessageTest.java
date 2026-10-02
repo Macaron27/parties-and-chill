@@ -34,6 +34,10 @@ class BridgeMessageTest {
     static final String REQUEST = "0d" + "00000005" + "02" + "0000000000000000000000000000000a"
             + "0000000000000000000000000000000b";
     static final String VERDICT = "0e0000000900";
+    // protocol 3: sounds
+    /** Sound(A, "ORB", 0.5, 2.0) */
+    static final String SOUND = "06" + "0000000000000000000000000000000a" + "00034f5242" + "3f000000" + "40000000";
+    static final String HELLO_V3 = "0a000000030000001f";
 
     static final BridgeMessage.PartyInfo PARTY = new BridgeMessage.PartyInfo(PARTY_ID, A, List.of(A, B), "bw-1");
 
@@ -46,12 +50,14 @@ class BridgeMessageTest {
         assertEquals(REPLY_EMPTY, hex(new BridgeMessage.Reply(8, BridgeMessage.STATUS_FAILED, null)));
         assertEquals(CHECK, hex(new BridgeMessage.Check(9, BridgeMessage.EVENT_CHAT, B, PARTY, "hé")));
         assertEquals(LEFT, hex(new BridgeMessage.Left(B, new BridgeMessage.PartyInfo(PARTY_ID, A, List.of(A), null))));
+        assertEquals(SOUND, hex(new BridgeMessage.Sound(A, "ORB", 0.5f, 2f)));
     }
 
     @Test
     void backendToProxyGoldenBytesDecode() {
         assertEquals(new BridgeMessage.Hello(1, 0), decode(HELLO), "protocol 1 bridges still say hello");
         assertEquals(new BridgeMessage.Hello(2, 0x1f), decode(HELLO_V2));
+        assertEquals(new BridgeMessage.Hello(3, 0x1f), decode(HELLO_V3));
         assertEquals(new BridgeMessage.Hello(3, 0x1f), BridgeMessage.decode(HexFormat.of().parseHex("0a000000030000001f" + "cafe")),
                 "fields appended by newer bridges don't cost us the hello");
         assertEquals(new BridgeMessage.Request(5, BridgeMessage.ACTION_ADD, A, B), decode(REQUEST));
@@ -66,7 +72,8 @@ class BridgeMessageTest {
                 new BridgeMessage.Snapshot(A, null, List.of()), new BridgeMessage.ChatLock(B, false),
                 new BridgeMessage.Hello(7, 3), new BridgeMessage.Chat("", 0), new BridgeMessage.Mute(A, 0),
                 new BridgeMessage.Reply(1, BridgeMessage.STATUS_ERROR, null), new BridgeMessage.Check(2, 0, A, PARTY, ""),
-                new BridgeMessage.Left(A, PARTY), new BridgeMessage.Request(3, 4, A, A), new BridgeMessage.Verdict(4, true))) {
+                new BridgeMessage.Left(A, PARTY), new BridgeMessage.Request(3, 4, A, A), new BridgeMessage.Verdict(4, true),
+                new BridgeMessage.Sound(B, "minecraft:block.note_block.pling", 1f, 0.75f))) {
             assertEquals(message, BridgeMessage.decode(BridgeMessage.encode(message)));
         }
     }

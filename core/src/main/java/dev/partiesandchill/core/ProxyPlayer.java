@@ -14,6 +14,12 @@ public interface ProxyPlayer {
 
     void sendMessage(Component message);
 
+    /** Shows {@code message} above the hotbar. */
+    void sendActionBar(Component message);
+
+    /** @return {@code true} if the proxy's permission plugin (e.g. LuckPerms) grants {@code permission} */
+    boolean hasPermission(String permission);
+
     /** @return the backend connection, empty while the player is between servers */
     Optional<Backend> backend();
 

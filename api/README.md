@@ -75,7 +75,7 @@ NetworkPartiesAPI parties = Bukkit.getServicesManager().load(NetworkPartiesAPI.c
 | `getParty(uuid)` | `CompletableFuture<Optional<Party>>` | anyone on the network, or offline within the disconnect grace |
 | `createParty(leader)` | `CompletableFuture<Boolean>` | leader must be online, not in a party |
 | `addMember(leader, target)` | `CompletableFuture<Boolean>` | no invite needed; target must be online |
-| `removeMember(leader, target)` | `CompletableFuture<Boolean>` | same as `/party kick` |
+| `removeMember(leader, target)` | `CompletableFuture<Boolean>` | same as `/party kick` (moderators allowed to kick may remove plain members) |
 | `disbandParty(leader)` | `CompletableFuture<Boolean>` | same as `/party disband` |
 | `isInParty(uuid)` / `isPartyLeader(uuid)` | `boolean` | local cache: **players on this server only** |
 
@@ -137,7 +137,7 @@ public final class ArenaListener implements Listener {
 | Event | Cancellable | Fired on the server of | When |
 |---|---|---|---|
 | `PartyCreateEvent` | yes | the leader | first `/party invite`, or `createParty` |
-| `PartyJoinEvent` | yes | the joining player | `/party accept`, or `addMember` |
+| `PartyJoinEvent` | yes | the joining player | `/party accept`, `/party join` (public parties), or `addMember` |
 | `PartyDisbandEvent` | yes | the leader | `/party disband`, or `disbandParty` |
 | `PartyChatEvent` | yes | the sender | `/pc <message>` or the chat lock (muted players are blocked before) |
 | `PartyLeaveEvent` | no | the player who left | leave, kick, disband, party broke up |

@@ -24,13 +24,16 @@ help:
   - "<#a78bfa>/p invite <gray><player></gray> <dark_gray>–</dark_gray> <gray>Invite a player (or just /p <player>)"
   - "<#a78bfa>/p accept <gray><player></gray> <dark_gray>–</dark_gray> <gray>Accept an invite"
   - "<#a78bfa>/p deny <gray><player></gray> <dark_gray>–</dark_gray> <gray>Decline an invite"
+  - "<#a78bfa>/p join <gray><player></gray> <dark_gray>–</dark_gray> <gray>Join a public party"
   - "<#a78bfa>/p list <dark_gray>–</dark_gray> <gray>Show party members"
   - "<#a78bfa>/p leave <dark_gray>–</dark_gray> <gray>Leave your party"
   - "<#a78bfa>/p warp <dark_gray>–</dark_gray> <gray>Pull your party to your server"
   - "<#a78bfa>/p kick <gray><player></gray> <dark_gray>–</dark_gray> <gray>Remove a member"
-  - "<#a78bfa>/p promote <gray><player></gray> <dark_gray>–</dark_gray> <gray>Transfer leadership"
+  - "<#a78bfa>/p promote <gray><player></gray> <dark_gray>–</dark_gray> <gray>Member → moderator → owner"
+  - "<#a78bfa>/p demote <gray><player></gray> <dark_gray>–</dark_gray> <gray>Moderator → member"
+  - "<#a78bfa>/p settings <dark_gray>–</dark_gray> <gray>Party settings (toggle, max size, mute, slow mode)"
   - "<#a78bfa>/p disband <dark_gray>–</dark_gray> <gray>Disband the party"
-  - "<#a78bfa>/pc <gray>[message]</gray> <dark_gray>–</dark_gray> <gray>Party chat (no message = toggle)"
+  - "<#a78bfa>/pc <gray>[message]</gray> <dark_gray>–</dark_gray> <gray>Party chat (/pc toggle: send everything there)"
   - "<separator>"
 
 invite:
@@ -54,38 +57,81 @@ party:
 member:
   joined: "<prefix><white><player></white> <#34d399>joined the party."
   left: "<prefix><white><player></white> <gray>left the party."
+  # <leader>: who kicked them (the owner or a moderator)
   kicked: "<prefix><white><player></white> <gray>was removed from the party by <white><leader></white>."
   disconnected: "<prefix><white><player></white> <gray>disconnected. They have <white><time></white> <gray>to rejoin before being removed."
   reconnected: "<prefix><white><player></white> <#34d399>reconnected."
   timed-out: "<prefix><white><player></white> <gray>was removed from the party after being offline too long."
 
 leader:
-  disconnected: "<prefix><gray>The party leader <white><player></white> <gray>disconnected. A new leader will be picked in <white><time></white> <gray>if they don't return."
-  changed: "<prefix><white><player></white> <gray>is now the <gradient:#a78bfa:#38bdf8>party leader</gradient><gray>."
-  promoted: "<prefix><white><player></white> <gray>promoted <white><target></white> <gray>to <gradient:#a78bfa:#38bdf8>party leader</gradient><gray>."
+  disconnected: "<prefix><gray>The party owner <white><player></white> <gray>disconnected. A new owner will be picked in <white><time></white> <gray>if they don't return."
+  changed: "<prefix><white><player></white> <gray>is now the <gradient:#a78bfa:#38bdf8>party owner</gradient><gray>."
+  promoted: "<prefix><white><player></white> <gray>made <white><target></white> <gray>the <gradient:#a78bfa:#38bdf8>party owner</gradient><gray>."
+
+role:
+  promoted: "<prefix><white><player></white> <gray>promoted <white><target></white> <gray>to <#fbbf24>moderator</#fbbf24><gray>."
+  demoted: "<prefix><white><player></white> <gray>demoted <white><target></white> <gray>to member."
 
 disband:
   leader: "<prefix><#f87171><white><player></white> disbanded the party."
   empty: "<prefix><gray>The party was disbanded: nobody else is in it."
 
 warp:
-  summoned: "<prefix><gray>Your party leader <white><player></white> <gray>summoned you to <white><server></white><gray>."
+  summoned: "<prefix><white><player></white> <gray>summoned you to <white><server></white><gray>."
   sent: "<prefix><gray>Warping <white><count></white> <gray>member(s) to <white><server></white><gray>."
   following: "<prefix><gray>Following <white><player></white> <gray>to <white><server></white><gray>..."
 
+settings:
+  header:
+    - "<separator>"
+    - "<gradient:#a78bfa:#38bdf8><bold>Party Settings</bold></gradient> <dark_gray>(click to change)</dark_gray>"
+  # <key>: the setting typed after /p settings; <name>: from settings.name below; <state>: state-on / state-off
+  toggle: "<click:run_command:'/party settings <key>'><hover:show_text:'<gray>Click to toggle <white><key>'><gray><name></gray> <dark_gray>»</dark_gray> <state></hover></click>"
+  # (not "on:" / "off:": YAML reads those keys as true / false)
+  state-on: "<#34d399>ON</#34d399>"
+  state-off: "<#f87171>OFF</#f87171>"
+  name:
+    autowarp: "Auto-warp"
+    chat: "Party chat"
+    allinvite: "Members can invite"
+    allwarp: "Members can warp"
+    public: "Public party"
+    mute: "Chat muted (staff only)"
+  max-size-line: "<click:suggest_command:'/party settings maxsize '><hover:show_text:'<gray>Click to change. Your limit: <white><limit>'><gray>Max size</gray> <dark_gray>»</dark_gray> <white><max></white></hover></click>"
+  slow-mode-line: "<click:suggest_command:'/party settings slowmode '><hover:show_text:'<gray>Click to change (e.g. 5s, off)'><gray>Slow mode</gray> <dark_gray>»</dark_gray> <white><time></white></hover></click>"
+  slow-mode-none: "<#f87171>OFF</#f87171>"
+  footer: "<separator>"
+  enabled: "<prefix><white><player></white> <gray>turned <white><setting></white> <#34d399>on</#34d399><gray>."
+  disabled: "<prefix><white><player></white> <gray>turned <white><setting></white> <#f87171>off</#f87171><gray>."
+  max-size: "<prefix><white><player></white> <gray>set the party size to <white><max></white><gray>."
+  slow-mode: "<prefix><white><player></white> <gray>set party chat slow mode to <white><time></white><gray>."
+  slow-mode-off: "<prefix><white><player></white> <gray>turned party chat slow mode <#f87171>off</#f87171><gray>."
+
 chat:
-  format: "<gradient:#a78bfa:#38bdf8><bold>Party</bold></gradient> <dark_gray>»</dark_gray> <white><player></white><dark_gray>:</dark_gray> <#e5e7eb><message>"
-  muted-notice: "<gradient:#a78bfa:#38bdf8><bold>Party</bold></gradient> <dark_gray>»</dark_gray> <white><player></white><dark_gray>:</dark_gray> <gray><italic>I am currently muted, so I can't reply to your messages or send any.</italic>"
-  toggled-on: "<prefix><#34d399>Party chat locked on.</#34d399> <gray>Everything you type now goes to your party. Type <white>/pc</white> again to switch back."
+  # <player> (clickable: suggests /msg), <message>, <time> (hover, see chat.timestamp-format in config.yml)
+  format: "<hover:show_text:'<gray>Sent at <white><time>'><dark_gray>[</dark_gray><gradient:#a78bfa:#38bdf8>Party</gradient><dark_gray>]</dark_gray></hover> <click:suggest_command:'/msg <player> '><hover:show_text:'<gray>Click to message <white><player>'><white><player></white></hover></click> <dark_gray>»</dark_gray> <#e5e7eb><message>"
+  # What staff in /pc spy mode see; <owner>: whose party it is
+  spy: "<hover:show_text:'<gray>Sent at <white><time>'><dark_gray>[</dark_gray><#f87171>Spy</#f87171><dark_gray>]</dark_gray></hover> <gray><owner>'s party</gray> <dark_gray>»</dark_gray> <white><player></white> <dark_gray>»</dark_gray> <gray><message>"
+  # How a @name of a party member looks inside <message>
+  mention: "<#fbbf24><bold>@<player></bold></#fbbf24>"
+  # Action bar of the mentioned player; <player>: who mentioned them
+  mention-actionbar: "<#fbbf24><player></#fbbf24> <gray>mentioned you in party chat"
+  muted-notice: "<dark_gray>[</dark_gray><gradient:#a78bfa:#38bdf8>Party</gradient><dark_gray>]</dark_gray> <white><player></white> <dark_gray>»</dark_gray> <gray><italic>I am currently muted, so I can't reply to your messages or send any.</italic>"
+  toggled-on: "<prefix><#34d399>Party chat locked on.</#34d399> <gray>Everything you type now goes to your party. Type <white>/pc toggle</white> again to switch back."
   toggled-off: "<prefix><gray>Party chat lock <#f87171>off</#f87171><gray>. You are back in public chat."
   needs-bridge: "<prefix><#f87171>The party chat lock isn't available on this server.</#f87171> <gray>Use <white>/pc <message></white> instead."
   lock-lost: "<prefix><gray>Party chat lock turned off: this server doesn't support it. Use <white>/pc <message></white>."
+
+spy:
+  enabled: "<prefix><#34d399>Party chat spy on.</#34d399> <gray>You now see every party's chat."
+  disabled: "<prefix><gray>Party chat spy <#f87171>off</#f87171><gray>."
 
 list:
   header:
     - "<separator>"
     - "<gradient:#a78bfa:#38bdf8><bold>Party Members</bold></gradient> <dark_gray>(<gray><count></gray>/<gray><max></gray>)</dark_gray>"
-  leader: "<gray>Leader</gray> <dark_gray>»</dark_gray> <status> <white><player></white>"
+  leader: "<gradient:#a78bfa:#38bdf8>Owner</gradient> <dark_gray>»</dark_gray> <status> <white><player></white>"
+  moderator: "<#fbbf24>Moderator</#fbbf24> <dark_gray>»</dark_gray> <status> <white><player></white>"
   member: "<gray>Member</gray> <dark_gray>»</dark_gray> <status> <white><player></white>"
   footer: "<separator>"
 
@@ -95,15 +141,24 @@ error:
   player-not-found: "<prefix><#f87171>No online player named <white><player></white>."
   player-offline: "<prefix><#f87171>That player is not online."
   not-in-party: "<prefix><#f87171>You are not in a party."
-  not-leader: "<prefix><#f87171>Only the party leader can do that."
+  not-leader: "<prefix><#f87171>Only the party owner can do that."
+  no-permission: "<prefix><#f87171>Your party role doesn't allow that."
+  target-outranks: "<prefix><#f87171>You can only do that to members ranked below you."
+  not-moderator: "<prefix><#f87171>That player is not a moderator."
   self: "<prefix><#f87171>You can't target yourself."
   already-in-party: "<prefix><#f87171>You are already in a party. Leave it first with <white>/p leave</white>."
   target-in-party: "<prefix><#f87171>That player is already in a party."
   target-not-in-party: "<prefix><#f87171>That player is not in your party."
   already-invited: "<prefix><#f87171>That player already has a pending invite."
   no-invite: "<prefix><#f87171>You have no pending invite from that player."
+  not-public: "<prefix><#f87171>That player isn't in a public party. Ask them for an invite."
   party-full: "<prefix><#f87171>The party is full."
   no-one-to-warp: "<prefix><#f87171>There is no online member to warp."
+  max-size-range: "<prefix><#f87171>The party size must be between <white>2</white> and <white><max></white> (or <white>max</white>)."
+  slow-mode-range: "<prefix><#f87171>Slow mode must be <white>off</white> or at most <white><max></white> seconds."
+  chat-disabled: "<prefix><#f87171>Party chat is turned off for this party."
+  chat-muted: "<prefix><#f87171>Party chat is muted: only the owner and moderators can talk."
+  slow-mode: "<prefix><#f87171>Slow mode is on. Wait <white><time></white> before your next message."
   muted: "<prefix><#f87171>You are muted and can't use party chat. Your mute ends in <white><time></white>."
   muted-permanent: "<prefix><#f87171>You are permanently muted and can't use party chat."
   unavailable: "<prefix><#f87171>The party service is temporarily unavailable. Please try again."

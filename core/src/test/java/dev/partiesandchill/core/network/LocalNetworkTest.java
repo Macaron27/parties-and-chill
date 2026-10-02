@@ -18,12 +18,25 @@ class LocalNetworkTest {
         network.serverSwitched(ALICE, "lobby"); // not logged in yet
         assertEquals(Optional.empty(), network.serverOf(ALICE));
 
-        network.playerJoined(ALICE, "Alice");
+        network.playerJoined(ALICE, "Alice", 8);
         network.serverSwitched(ALICE, "bw-1");
         assertEquals(Optional.of("bw-1"), network.serverOf(ALICE));
         network.playerLeft(ALICE);
         assertEquals(Optional.empty(), network.serverOf(ALICE));
+        assertEquals(8, network.sizeLimit(ALICE), "kept while they may come back within the grace period");
+        assertEquals(0, network.sizeLimit(new UUID(0, 11)));
         network.serverSwitched(ALICE, "bw-2"); // handled after the logout
         assertEquals(Optional.empty(), network.serverOf(ALICE));
+    }
+
+    @Test
+    void sizeLimitsLastAsLongAsTheSessionThenTheRetention() throws InterruptedException {
+        LocalNetwork network = new LocalNetwork(Duration.ofMillis(1));
+        network.playerJoined(ALICE, "Alice", 24);
+        Thread.sleep(20); // longer than the retention: an online player's limit must not expire
+        assertEquals(24, network.sizeLimit(ALICE));
+        network.playerLeft(ALICE);
+        Thread.sleep(20);
+        assertEquals(0, network.sizeLimit(ALICE), "forgotten once the retention after leaving is over");
     }
 }

@@ -5,6 +5,7 @@ import dev.partiesandchill.core.ProxyPlatform;
 import dev.partiesandchill.core.ProxyPlayer;
 import dev.partiesandchill.core.party.Party;
 import dev.partiesandchill.core.party.PartyMember;
+import dev.partiesandchill.core.party.PartySettings;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.slf4j.LoggerFactory;
@@ -32,7 +33,7 @@ class RedisStartupTest {
         RedisClient redis = LocalRedis.client();
         RedisPartyStore store = new RedisPartyStore(redis, "pnc:");
         long now = System.currentTimeMillis();
-        Party party = Party.create(ALICE, now).withMember(PartyMember.joined(BOB, now));
+        Party party = Party.create(ALICE, now, PartySettings.DEFAULTS).withMember(PartyMember.joined(BOB, now));
         store.atomically(() -> {
             store.save(party);
             return null;

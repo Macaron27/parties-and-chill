@@ -5,6 +5,7 @@ import dev.partiesandchill.core.bridge.BridgeChannel;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.gson.GsonComponentSerializer;
 import net.kyori.adventure.text.serializer.json.JSONOptions;
+import net.md_5.bungee.api.ChatMessageType;
 import net.md_5.bungee.api.ProxyServer;
 import net.md_5.bungee.api.chat.BaseComponent;
 import net.md_5.bungee.api.config.ServerInfo;
@@ -41,6 +42,16 @@ record BungeePlayer(ProxiedPlayer player) implements ProxyPlayer {
     @Override
     public void sendMessage(Component message) {
         player.sendMessage(bungee(message));
+    }
+
+    @Override
+    public void sendActionBar(Component message) {
+        player.sendMessage(ChatMessageType.ACTION_BAR, bungee(message));
+    }
+
+    @Override
+    public boolean hasPermission(String permission) {
+        return player.hasPermission(permission);
     }
 
     @Override

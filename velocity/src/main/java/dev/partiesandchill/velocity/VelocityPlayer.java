@@ -29,6 +29,16 @@ record VelocityPlayer(ProxyServer proxy, Player player) implements ProxyPlayer {
     }
 
     @Override
+    public void sendActionBar(Component message) {
+        player.sendActionBar(message);
+    }
+
+    @Override
+    public boolean hasPermission(String permission) {
+        return player.hasPermission(permission);
+    }
+
+    @Override
     public Optional<Backend> backend() {
         return player.getCurrentServer().map(ServerBackend::new);
     }

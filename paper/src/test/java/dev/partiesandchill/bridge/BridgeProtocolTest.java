@@ -36,10 +36,14 @@ public class BridgeProtocolTest {
     static final String REQUEST = "0d" + "00000005" + "02" + "0000000000000000000000000000000a"
             + "0000000000000000000000000000000b";
     static final String VERDICT = "0e0000000900";
+    // protocol 3: sounds
+    /** Sound(A, "ORB", 0.5, 2.0) */
+    static final String SOUND = "06" + "0000000000000000000000000000000a" + "00034f5242" + "3f000000" + "40000000";
+    static final String HELLO_V3 = "0a000000030000001f";
 
     @Test
     void backendToProxyMessagesMatchTheGoldenBytes() {
-        assertEquals(HELLO_V2, hex(BridgeProtocol.hello(0x1f)));
+        assertEquals(HELLO_V3, hex(BridgeProtocol.hello(0x1f)));
         assertEquals(REQUEST, hex(BridgeProtocol.request(5, BridgeProtocol.ACTION_ADD, A, B)));
         assertEquals(VERDICT, hex(BridgeProtocol.verdict(9, false)));
         assertEquals(CHAT, hex(BridgeProtocol.chat("hé <b>", 5)));
@@ -85,6 +89,17 @@ public class BridgeProtocolTest {
         assertEquals(BridgeProtocol.LEFT, left.type);
         assertEquals(B, left.player);
         assertParty(left.party, List.of(A), null);
+    }
+
+    @Test
+    void soundGoldenBytesDecode() {
+        BridgeProtocol.Incoming sound = BridgeProtocol.decode(bytes(SOUND));
+        assertEquals(BridgeProtocol.SOUND, sound.type);
+        assertEquals(A, sound.player);
+        assertEquals("ORB", sound.message);
+        assertEquals(0.5f, sound.volume);
+        assertEquals(2f, sound.pitch);
+        assertThrows(IllegalArgumentException.class, () -> BridgeProtocol.decode(bytes(SOUND.substring(0, SOUND.length() - 2))));
     }
 
     @Test
