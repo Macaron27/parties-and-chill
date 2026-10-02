@@ -1,0 +1,5 @@
+name: PartiesAndChill
+version: "${version}"
+main: dev.partiesandchill.bungee.PartiesAndChillBungee
+description: Hypixel-style parties for BungeeCord networks
+author: Parties & Chill

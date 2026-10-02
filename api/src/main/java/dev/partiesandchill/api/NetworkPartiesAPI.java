@@ -12,9 +12,9 @@ import java.util.concurrent.CompletableFuture;
  * Parties &amp; Chill for backend plugins (Spigot/Paper 1.8.8 → 26.x). Get it with {@link NetworkParties#getAPI()}
  * or {@code Bukkit.getServicesManager().load(NetworkPartiesAPI.class)}.
  *
- * <p>Parties live on the Velocity proxy (shared by every proxy through Redis), so the asynchronous methods ask the
- * proxy over a plugin channel. That needs at least one player online on this server to carry the message.
- * Their futures complete <b>on the server main thread</b>: callbacks may use the Bukkit API directly. Never
+ * <p>Parties live on the proxy (Velocity or BungeeCord, shared by every proxy through Redis), so the asynchronous
+ * methods ask the proxy over a plugin channel. That needs at least one player online on this server to carry the
+ * message. Their futures complete <b>on the server main thread</b>: callbacks may use the Bukkit API directly. Never
  * {@code join()} or {@code get()} them on the main thread, since the answer is processed there.
  *
  * <p>A future can complete exceptionally. The cause (thrown by {@code get()} inside an

@@ -4,7 +4,6 @@ plugins {
 }
 
 java {
-    toolchain.languageVersion = JavaLanguageVersion.of(25)
     withSourcesJar()
     withJavadocJar()
 }
@@ -15,19 +14,19 @@ dependencies {
     compileOnlyApi("org.jetbrains:annotations:26.0.2")
 
     testImplementation(libs.spigot.api) { isTransitive = false }
-    testImplementation(platform(libs.junit.bom))
-    testImplementation(libs.junit.jupiter)
-    testRuntimeOnly(libs.junit.launcher)
 }
 
 tasks {
     compileJava {
-        options.encoding = "UTF-8"
-        options.release = 8 // loaded by Java 8 servers, like paper-bridge
-        options.compilerArgs.addAll(listOf("-Xlint:all,-options,-processing"))
+        options.release = 8 // loaded by Java 8 servers, like the paper bridge
     }
     compileTestJava {
         options.release = 25
+    }
+    jar {
+        // For developers compiling against it (compileOnly); servers run the paper jar, which already contains it.
+        archiveFileName = "PartiesAndChill-api.jar"
+        destinationDirectory = rootProject.layout.projectDirectory.dir("builds")
     }
     javadoc {
         (options as StandardJavadocDocletOptions).apply {
@@ -35,9 +34,6 @@ tasks {
             addStringOption("-release", "8")
             addBooleanOption("Xdoclint:all,-missing", true) // event boilerplate (constructors, getHandlerList) needs no prose
         }
-    }
-    test {
-        useJUnitPlatform()
     }
 }
 

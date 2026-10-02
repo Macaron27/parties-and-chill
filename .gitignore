@@ -1,5 +1,22 @@
+# Build output
 .gradle/
 build/
+builds/
+target/
+out/
+
+# Local test servers
 run/
-*.iml
+/test/
+
+# IDEs and OS
 .idea/
+*.iml
+.vscode/
+.DS_Store
+
+# Claude Code
+.claude/
+claude.json
+.claude.json
+CLAUDE.local.md
