@@ -40,7 +40,7 @@ public final class Party {
         return members;
     }
 
-    /** @return the server the leader is connected to (as named in velocity.toml), or {@code null} if they are offline */
+    /** @return the server the leader is connected to (as named in the proxy config), or {@code null} if they are offline */
     public @Nullable String getServer() {
         return server;
     }

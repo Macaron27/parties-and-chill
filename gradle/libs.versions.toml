@@ -1,11 +1,27 @@
 [versions]
 velocity = "4.2.0"
+# What Velocity 4.2.0 ships: core compiles against these, the BungeeCord jar shades them.
+adventure = "5.2.0"
+configurate = "4.2.0"
+caffeine = "3.2.4"
+gson = "2.14.0"
+slf4j = "2.0.19"
+bungeecord = "1.21-R0.4"
 jedis = "8.0.1"
 junit = "6.1.3"
 shadow = "9.6.1"
 
 [libraries]
 velocity-api = { module = "com.velocitypowered:velocity-api", version.ref = "velocity" }
+bungeecord-api = { module = "net.md-5:bungeecord-api", version.ref = "bungeecord" }
+adventure-minimessage = { module = "net.kyori:adventure-text-minimessage", version.ref = "adventure" }
+adventure-gson = { module = "net.kyori:adventure-text-serializer-gson", version.ref = "adventure" }
+adventure-plain = { module = "net.kyori:adventure-text-serializer-plain", version.ref = "adventure" }
+configurate-yaml = { module = "org.spongepowered:configurate-yaml", version.ref = "configurate" }
+caffeine = { module = "com.github.ben-manes.caffeine:caffeine", version.ref = "caffeine" }
+gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
+slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
+slf4j-nop = { module = "org.slf4j:slf4j-nop", version.ref = "slf4j" }
 jedis = { module = "redis.clients:jedis", version.ref = "jedis" }
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
@@ -15,6 +31,10 @@ bedwars1058-api = { module = "com.github.andrei1058.BedWars1058:bedwars-api", ve
 bedwars2023-api = { module = "com.tomkeuper.bedwars:bedwars-api", version = "5.0.0" }
 bwproxy2023-api = { module = "com.tomkeuper.bedwars:proxy-api", version = "1.0" }
 advancedban = { module = "com.github.DevLeoko:AdvancedBan", version = "v2.2.1" }
+
+[bundles]
+# Libraries core needs from the proxy.
+proxy-provided = ["adventure-minimessage", "configurate-yaml", "caffeine", "gson", "slf4j-api"]
 
 [plugins]
 shadow = { id = "com.gradleup.shadow", version.ref = "shadow" }
