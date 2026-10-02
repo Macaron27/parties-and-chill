@@ -53,7 +53,7 @@ public final class BridgeHandler {
         executor.execute(() -> {
             switch (message) {
                 case BridgeMessage.Hello hello -> {
-                    bridge.markBridged(server, hello.listeners());
+                    bridge.markBridged(server, hello.protocol(), hello.listeners());
                     bridge.sendSnapshot(player, manager.partyOf(player.uniqueId()).orElse(null));
                     if (chat.isLocked(player.uniqueId())) bridge.sendChatLock(player, true);
                 }
@@ -67,6 +67,7 @@ public final class BridgeHandler {
                 case BridgeMessage.Reply ignored -> backendBound(server);
                 case BridgeMessage.Check ignored -> backendBound(server);
                 case BridgeMessage.Left ignored -> backendBound(server);
+                case BridgeMessage.Sound ignored -> backendBound(server);
             }
         });
     }

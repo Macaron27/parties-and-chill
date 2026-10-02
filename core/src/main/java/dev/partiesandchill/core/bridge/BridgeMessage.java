@@ -18,6 +18,8 @@ import java.util.UUID;
 public sealed interface BridgeMessage {
 
     int MAX_MEMBERS = 1024;
+    /** Bridges speaking this protocol (or newer) understand {@link Sound}. */
+    int PROTOCOL_SOUNDS = 3;
 
     /** Backend events: {@link Check#event()} codes, and {@link Hello#listeners()} bits ({@code 1 << code}). */
     int EVENT_CREATE = 0, EVENT_JOIN = 1, EVENT_DISBAND = 2, EVENT_CHAT = 3, EVENT_LEAVE = 4;
@@ -56,6 +58,14 @@ public sealed interface BridgeMessage {
 
     /** {@code player} is no longer in {@code party} (shown as it was before). */
     record Left(UUID player, PartyInfo party) implements BridgeMessage {
+    }
+
+    /**
+     * Since protocol 3: play {@code sound} to {@code player} (party chat mentions).
+     *
+     * @param sound a Bukkit {@code Sound} name or a namespaced key, resolved by the backend
+     */
+    record Sound(UUID player, String sound, float volume, float pitch) implements BridgeMessage {
     }
 
     // backend → proxy
@@ -124,6 +134,13 @@ public sealed interface BridgeMessage {
                     uuid(out, player);
                     party(out, party);
                 }
+                case Sound(UUID player, String sound, float volume, float pitch) -> {
+                    out.writeByte(6);
+                    uuid(out, player);
+                    out.writeUTF(sound);
+                    out.writeFloat(volume);
+                    out.writeFloat(pitch);
+                }
                 case Hello(int protocol, int listeners) -> {
                     out.writeByte(10);
                     out.writeInt(protocol);
@@ -179,6 +196,7 @@ public sealed interface BridgeMessage {
                 }
                 case 4 -> new Check(in.readInt(), in.readByte(), uuid(in), party(in), in.readUTF());
                 case 5 -> new Left(uuid(in), party(in));
+                case 6 -> new Sound(uuid(in), in.readUTF(), in.readFloat(), in.readFloat());
                 case 10 -> {
                     int protocol = in.readInt();
                     Hello hello = new Hello(protocol, protocol >= 2 ? in.readInt() : 0);

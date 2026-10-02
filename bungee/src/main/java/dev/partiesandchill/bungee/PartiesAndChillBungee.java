@@ -43,8 +43,8 @@ public final class PartiesAndChillBungee extends Plugin implements Listener, Pro
             return;
         }
         PluginManager plugins = getProxy().getPluginManager();
-        plugins.registerCommand(this, new BungeeCommand("party", "p", started, started.partyCommand()));
-        plugins.registerCommand(this, new BungeeCommand("pchat", "pc", started, started.chatCommand()));
+        plugins.registerCommand(this, new BungeeCommand("party", started, started.partyCommand(), "p"));
+        plugins.registerCommand(this, new BungeeCommand("pchat", started, started.chatCommand(), "pc", "party-chat"));
         core = started;
     }
 

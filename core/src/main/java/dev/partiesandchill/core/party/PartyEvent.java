@@ -28,6 +28,25 @@ public sealed interface PartyEvent {
     }
 
     /**
+     * A party chat line. Each proxy renders it for the recipients, staff spying on party chat and mentioned players it
+     * hosts.
+     *
+     * @param recipients party members who receive it
+     * @param sender     who wrote it
+     * @param owner      the party owner (spies see whose party it is)
+     * @param message    the raw text, never parsed as MiniMessage
+     * @param mentioned  members tagged with {@code @name}: they also get an action bar and a ping
+     * @param sentAt     epoch millis, shown as the hover timestamp
+     */
+    record Chat(Set<UUID> recipients, UUID sender, UUID owner, String message, Set<UUID> mentioned, long sentAt)
+            implements PartyEvent {
+        public Chat {
+            recipients = Set.copyOf(recipients);
+            mentioned = Set.copyOf(mentioned);
+        }
+    }
+
+    /**
      * Sends members to a server.
      *
      * @param members     players to move (those already there are skipped by the dispatcher)

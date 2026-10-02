@@ -34,8 +34,8 @@ import java.util.logging.Level;
 /**
  * Backend half of Parties &amp; Chill (Spigot/Paper 1.8.8 → 26.x). Party state lives on the proxy; this plugin
  * caches what the proxy pushes, diverts chat for players with the party chat lock (the proxy cannot cancel
- * signed 1.19.1+ chat), reports AdvancedBan mutes, feeds BedWars party adapters, and serves the developer API
- * ({@link NetworkPartiesAPI} and its events).
+ * signed 1.19.1+ chat), plays mention pings, reports AdvancedBan mutes, feeds BedWars party adapters, and serves the
+ * developer API ({@link NetworkPartiesAPI} and its events).
  */
 public final class BridgePlugin extends JavaPlugin implements Listener, PluginMessageListener {
 
@@ -45,10 +45,12 @@ public final class BridgePlugin extends JavaPlugin implements Listener, PluginMe
     private final PartyCache cache = new PartyCache();
     private final BukkitTransport transport = new BukkitTransport();
     private final BridgeApi api = new BridgeApi(cache, transport);
+    private Sounds sounds;
     private AdvancedBanHook advancedBan;
 
     @Override
     public void onEnable() {
+        sounds = new Sounds(getLogger());
         getServer().getMessenger().registerOutgoingPluginChannel(this, BridgeProtocol.CHANNEL);
         getServer().getMessenger().registerIncomingPluginChannel(this, BridgeProtocol.CHANNEL, this);
         getServer().getPluginManager().registerEvents(this, this);
@@ -123,6 +125,10 @@ public final class BridgePlugin extends JavaPlugin implements Listener, PluginMe
                 break;
             case BridgeProtocol.LEFT:
                 fire(new PartyLeaveEvent(player, message.party));
+                break;
+            case BridgeProtocol.SOUND: // plugin messages arrive on the server thread
+                Player target = Bukkit.getPlayer(message.player);
+                if (target != null) sounds.play(target, message.message, message.volume, message.pitch);
                 break;
             default:
                 cache.apply(message);

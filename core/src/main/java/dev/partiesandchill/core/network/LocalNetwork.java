@@ -22,6 +22,9 @@ public final class LocalNetwork implements Network {
     // Players who left recently keep a name, so /p list and kick still work during the disconnect grace.
     private final Cache<UUID, String> recentNames;
     private final Cache<String, UUID> recentByName;
+    // Read for owners who are offline (within their grace period); online ones are checked live.
+    private final Map<UUID, Integer> sizeLimits = new ConcurrentHashMap<>();
+    private final Cache<UUID, Integer> recentSizeLimits;
     private final Map<UUID, Long> mutes = new ConcurrentHashMap<>();
     private volatile Consumer<PartyEvent> handler;
 
@@ -29,6 +32,7 @@ public final class LocalNetwork implements Network {
     public LocalNetwork(Duration nameRetention) {
         this.recentNames = Caffeine.newBuilder().expireAfterWrite(nameRetention).build();
         this.recentByName = Caffeine.newBuilder().expireAfterWrite(nameRetention).build();
+        this.recentSizeLimits = Caffeine.newBuilder().expireAfterWrite(nameRetention).build();
     }
 
     @Override
@@ -42,7 +46,8 @@ public final class LocalNetwork implements Network {
     }
 
     @Override
-    public void playerJoined(UUID id, String name) {
+    public void playerJoined(UUID id, String name, int sizeLimit) {
+        sizeLimits.put(id, sizeLimit);
         String previous = online.put(id, name);
         if (previous != null) onlineByName.remove(previous.toLowerCase(Locale.ROOT), id);
         onlineByName.put(name.toLowerCase(Locale.ROOT), id);
@@ -50,6 +55,8 @@ public final class LocalNetwork implements Network {
 
     @Override
     public void playerLeft(UUID id) {
+        Integer limit = sizeLimits.remove(id);
+        if (limit != null) recentSizeLimits.put(id, limit);
         String name = online.remove(id);
         servers.remove(id);
         if (name == null) return;
@@ -88,6 +95,13 @@ public final class LocalNetwork implements Network {
     public Optional<String> nameOf(UUID id) {
         String name = online.get(id);
         return Optional.ofNullable(name != null ? name : recentNames.getIfPresent(id));
+    }
+
+    @Override
+    public int sizeLimit(UUID id) {
+        Integer limit = sizeLimits.get(id);
+        if (limit == null) limit = recentSizeLimits.getIfPresent(id);
+        return limit == null ? 0 : limit;
     }
 
     @Override

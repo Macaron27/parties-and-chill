@@ -13,26 +13,36 @@ import java.util.function.UnaryOperator;
  * Immutable snapshot of a party. Every change returns a new {@code Party}, so snapshots can be shared
  * across threads (and serialized to Redis) without locking.
  *
- * @param id      stable party identifier
- * @param leader  UUID of the leader; always one of {@link #members()}
- * @param members members in join order (the leader included)
- * @param invites pending invites, oldest first
+ * @param id       stable party identifier
+ * @param leader   UUID of the leader (the {@link PartyRole#OWNER}); always one of {@link #members()}
+ * @param members  members in join order (the leader included)
+ * @param invites  pending invites, oldest first
+ * @param settings the party's own settings
  */
-public record Party(UUID id, UUID leader, List<PartyMember> members, List<Invite> invites) {
+public record Party(UUID id, UUID leader, List<PartyMember> members, List<Invite> invites, PartySettings settings) {
 
     public Party {
         Objects.requireNonNull(id, "id");
         Objects.requireNonNull(leader, "leader");
-        members = List.copyOf(members);
-        invites = List.copyOf(invites);
-        if (members.stream().noneMatch(m -> m.id().equals(leader))) {
-            throw new IllegalArgumentException("leader " + leader + " is not a member of party " + id);
+        // ponytail: parties stored by 1.2 get the built-in defaults, not config.yml's; they only exist during an upgrade.
+        if (settings == null) settings = PartySettings.DEFAULTS;
+        // The leader is the owner; a previous owner stays on as moderator (Hypixel's hand-over).
+        List<PartyMember> ranked = new ArrayList<>(members.size());
+        boolean leaderFound = false;
+        for (PartyMember member : members) {
+            boolean isLeader = member.id().equals(leader);
+            leaderFound |= isLeader;
+            PartyRole role = isLeader ? PartyRole.OWNER : member.role() == PartyRole.OWNER ? PartyRole.MODERATOR : member.role();
+            ranked.add(role == member.role() ? member : member.withRole(role));
         }
+        if (!leaderFound) throw new IllegalArgumentException("leader " + leader + " is not a member of party " + id);
+        members = List.copyOf(ranked);
+        invites = List.copyOf(invites);
     }
 
     /** Creates a party containing only its leader. */
-    public static Party create(UUID leader, long now) {
-        return new Party(UUID.randomUUID(), leader, List.of(PartyMember.joined(leader, now)), List.of());
+    public static Party create(UUID leader, long now, PartySettings settings) {
+        return new Party(UUID.randomUUID(), leader, List.of(PartyMember.joined(leader, now)), List.of(), settings);
     }
 
     /** @return the member entry for {@code player}, if they belong to this party */
@@ -43,6 +53,11 @@ public record Party(UUID id, UUID leader, List<PartyMember> members, List<Invite
     /** @return {@code true} if {@code player} belongs to this party */
     public boolean isMember(UUID player) {
         return member(player).isPresent();
+    }
+
+    /** @return {@code player}'s rank, if they belong to this party */
+    public Optional<PartyRole> role(UUID player) {
+        return member(player).map(PartyMember::role);
     }
 
     /** @return {@code true} if {@code player} leads this party */
@@ -88,7 +103,7 @@ public record Party(UUID id, UUID leader, List<PartyMember> members, List<Invite
         List<PartyMember> copy = new ArrayList<>(members);
         int index = indexOf(member.id());
         if (index >= 0) copy.set(index, member); else copy.add(member);
-        return new Party(id, leader, copy, invites);
+        return new Party(id, leader, copy, invites, settings);
     }
 
     /** @return a copy where {@code player}'s entry is transformed by {@code change} */
@@ -107,12 +122,22 @@ public record Party(UUID id, UUID leader, List<PartyMember> members, List<Invite
     public Party withoutMember(UUID player, UUID nextLeader) {
         List<PartyMember> copy = new ArrayList<>(members);
         copy.removeIf(m -> m.id().equals(player));
-        return new Party(id, nextLeader, copy, invites);
+        return new Party(id, nextLeader, copy, invites, settings);
     }
 
-    /** @return a copy led by {@code newLeader}, who must already be a member */
+    /** @return a copy led by {@code newLeader}, who must already be a member; the previous owner becomes a moderator */
     public Party withLeader(UUID newLeader) {
-        return new Party(id, newLeader, members, invites);
+        return new Party(id, newLeader, members, invites, settings);
+    }
+
+    /** @return a copy where {@code player} (not the owner) has {@code role} */
+    public Party withRole(UUID player, PartyRole role) {
+        return updateMember(player, m -> m.withRole(role));
+    }
+
+    /** @return a copy with {@code settings} */
+    public Party withSettings(PartySettings settings) {
+        return new Party(id, leader, members, invites, settings);
     }
 
     /** @return a copy with {@code invite} added (replacing any previous invite for the same target) */
@@ -120,14 +145,14 @@ public record Party(UUID id, UUID leader, List<PartyMember> members, List<Invite
         List<Invite> copy = new ArrayList<>(invites);
         copy.removeIf(i -> i.target().equals(invite.target()));
         copy.add(invite);
-        return new Party(id, leader, members, copy);
+        return new Party(id, leader, members, copy, settings);
     }
 
     /** @return a copy without the invite addressed to {@code target} */
     public Party withoutInvite(UUID target) {
         List<Invite> copy = new ArrayList<>(invites);
         copy.removeIf(i -> i.target().equals(target));
-        return new Party(id, leader, members, copy);
+        return new Party(id, leader, members, copy, settings);
     }
 
     private int indexOf(UUID player) {

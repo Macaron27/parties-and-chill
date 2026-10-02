@@ -16,6 +16,7 @@ import dev.partiesandchill.core.network.Network;
 import dev.partiesandchill.core.party.InMemoryPartyStore;
 import dev.partiesandchill.core.party.Party;
 import dev.partiesandchill.core.party.PartyManager;
+import dev.partiesandchill.core.party.PartyRules;
 import dev.partiesandchill.core.party.PartyStore;
 import dev.partiesandchill.core.redis.RedisNetwork;
 import dev.partiesandchill.core.redis.RedisPartyStore;
@@ -98,14 +99,17 @@ public final class PartiesCore implements AutoCloseable {
             Clock clock = Clock.systemUTC();
             BridgeGuard guard = new BridgeGuard(id -> platform.player(id).flatMap(ProxyPlayer::backend), bridge, network,
                     logger);
-            manager = new PartyManager(store, config.party(), clock, network::publish, network::isOnline,
+            PartyRules rules = config.party();
+            // Owners on this proxy are checked live (permission changes apply at once); others as of their last login.
+            manager = new PartyManager(store, rules, clock, network::publish, network::isOnline,
+                    id -> platform.player(id).map(p -> rules.sizeLimit(p::hasPermission)).orElseGet(() -> network.sizeLimit(id)),
                     RandomGenerator.getDefault(), guard);
             chat = new PartyChat(manager, network, messages, bridge, clock);
             // Before start(): it already reaps proxies that died (this one's previous run included).
             if (network instanceof RedisNetwork redisNetwork) redisNetwork.onPlayersLost(manager::disconnected);
-            network.start(new EventDispatcher(platform, scheduler, messages, network, bridge, chat));
+            network.start(new EventDispatcher(platform, scheduler, messages, network, bridge, chat, config.chat()));
             bridgeHandler = new BridgeHandler(manager, network, bridge, guard, chat, executor, logger);
-            partyCommand = new PartyCommand(platform, manager, network, messages, executor, logger);
+            partyCommand = new PartyCommand(platform, manager, network, messages, chat, executor, logger);
             chatCommand = new PartyChatCommand(chat, messages, executor, logger);
         } catch (RuntimeException e) {
             close(); // e.g. Redis unreachable: don't leave the client or the scheduler behind
@@ -136,7 +140,7 @@ public final class PartiesCore implements AutoCloseable {
         return partyCommand;
     }
 
-    /** @return {@code /pchat} ({@code /pc}) */
+    /** @return {@code /pchat} ({@code /pc}, {@code /party-chat}) */
     public ProxyCommand chatCommand() {
         return chatCommand;
     }
@@ -144,7 +148,9 @@ public final class PartiesCore implements AutoCloseable {
     /** A player finished logging in through this proxy. */
     public void playerJoined(ProxyPlayer player) {
         executor.execute(() -> {
-            network.playerJoined(player.uniqueId(), player.name());
+            network.playerJoined(player.uniqueId(), player.name(), manager.rules().sizeLimit(player::hasPermission));
+            // Both run on their own virtual thread: a switch handled before this registration was dropped, record it now.
+            player.backend().ifPresent(server -> network.serverSwitched(player.uniqueId(), server.name()));
             manager.reconnected(player.uniqueId());
         });
     }
@@ -163,7 +169,8 @@ public final class PartiesCore implements AutoCloseable {
 
     /**
      * A player finished switching servers: records their server (developer API {@code Party#getServer}), refreshes the
-     * new backend's party snapshot and chat lock, then auto-warps the party if its leader entered a game server.
+     * new backend's party snapshot and chat lock, then auto-warps the party if its owner (or a moderator allowed to
+     * start games) entered a game server.
      */
     public void serverSwitched(ProxyPlayer player) {
         executor.execute(() -> player.backend().ifPresent(server -> {
@@ -171,9 +178,7 @@ public final class PartiesCore implements AutoCloseable {
             Party party = manager.partyOf(player.uniqueId()).orElse(null);
             bridge.sendSnapshot(player, party);
             chat.serverSwitched(player);
-            if (party != null && party.isLeader(player.uniqueId())) { // skip the manager's own lookup for everyone else
-                manager.leaderSwitchedServer(player.uniqueId(), server.name());
-            }
+            if (party != null) manager.switchedServer(player.uniqueId(), party, server.name());
         }));
     }
 

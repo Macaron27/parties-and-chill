@@ -20,8 +20,12 @@ public interface Network extends AutoCloseable {
     /** Delivers {@code event} to every proxy of the network, this one included. */
     void publish(PartyEvent event);
 
-    /** Registers a player who just logged in through this proxy. */
-    void playerJoined(UUID id, String name);
+    /**
+     * Registers a player who just logged in through this proxy.
+     *
+     * @param sizeLimit the party size their permissions grant, for proxies that can't check those permissions
+     */
+    void playerJoined(UUID id, String name, int sizeLimit);
 
     /** Unregisters a player who left this proxy (no-op if they are already registered on another proxy). */
     void playerLeft(UUID id);
@@ -40,6 +44,9 @@ public interface Network extends AutoCloseable {
 
     /** @return last known name of a player */
     Optional<String> nameOf(UUID id);
+
+    /** @return the party size limit recorded at the player's last login, or {@code 0} if unknown */
+    int sizeLimit(UUID id);
 
     /** @return epoch millis until which the player is muted ({@code 0}: not muted, {@link Long#MAX_VALUE}: forever) */
     long mutedUntil(UUID id);

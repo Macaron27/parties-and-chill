@@ -43,6 +43,24 @@ class BungeePlayerTest {
         assertTrue(TextComponent.toPlainText(BungeePlayer.bungee(line)).contains("<red>hi §cthere"));
     }
 
+    @Test
+    void chatNamesStayClickableAndTimestampsHoverable() {
+        Component line = messages.render("chat.format", Map.of("player", "Bob"), Map.of("time", "12:00:00"),
+                Map.of("message", Component.text("gg")));
+        List<BaseComponent> all = flatten(BungeePlayer.bungee(line));
+        assertTrue(all.stream().anyMatch(c -> c.getClickEvent() != null
+                && c.getClickEvent().getAction() == ClickEvent.Action.SUGGEST_COMMAND
+                && c.getClickEvent().getValue().equals("/msg Bob ")));
+        assertTrue(all.stream().anyMatch(c -> c.getHoverEvent() != null
+                && c.getHoverEvent().getAction() == HoverEvent.Action.SHOW_TEXT));
+    }
+
+    @Test
+    void partyChatAnswersToAllItsNames() {
+        BungeeCommand command = new BungeeCommand("pchat", null, null, "pc", "party-chat");
+        assertEquals(List.of("pc", "party-chat"), List.of(command.getAliases()));
+    }
+
     private static List<BaseComponent> flatten(BaseComponent[] components) {
         List<BaseComponent> out = new ArrayList<>();
         for (BaseComponent component : components) {

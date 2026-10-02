@@ -86,7 +86,7 @@ class PartiesCoreTest {
         await(() -> alice.saw("Party chat locked on."));
 
         assertTrue(core.chat(alice, "gg"), "the proxy cancels it");
-        await(() -> bob.saw("Party » Alice: gg"));
+        await(() -> bob.saw("[Party] Alice » gg"));
         assertFalse(core.chat(bob, "hello"), "not locked");
 
         alice.signed = true;
@@ -131,6 +131,77 @@ class PartiesCoreTest {
         platform.players.remove(bob.id);
         core.playerLeft(bob.id);
         await(() -> alice.saw("Bob disconnected. They have 5m to rejoin before being removed."));
+    }
+
+    @Test
+    void mentionsShowAnActionBarAndPingThroughBridgesThatCanPlaySounds() throws Exception {
+        party();
+        bob.backend = new FakeBackend("lobby-2"); // runs a 1.3 bridge; Alice's lobby still runs 1.2
+        core.serverSwitched(bob);
+        bob.backend.next(BridgeMessage.Snapshot.class);
+        core.bridgeMessage(bob, bob.backend, BridgeMessage.encode(new BridgeMessage.Hello(3, 0)));
+        bob.backend.next(BridgeMessage.Snapshot.class);
+
+        core.chatCommand().execute(alice, new String[]{"ready", "@bob?"});
+        await(() -> bob.saw("[Party] Alice » ready @Bob?")); // canonical name, highlighted
+        await(() -> bob.actionBars.contains("Alice mentioned you in party chat"));
+        BridgeMessage.Sound sound = bob.backend.next(BridgeMessage.Sound.class);
+        assertEquals(new BridgeMessage.Sound(bob.id, "ENTITY_EXPERIENCE_ORB_PICKUP", 1f, 1f), sound);
+
+        core.chatCommand().execute(bob, new String[]{"@Alice", "go"});
+        await(() -> alice.actionBars.contains("Bob mentioned you in party chat"));
+        assertTrue(alice.backend.received.stream().noneMatch(m -> m instanceof BridgeMessage.Sound),
+                "a protocol 2 bridge would log the unknown message: no sound");
+        assertTrue(alice.actionBars.size() == 1 && bob.actionBars.size() == 1, "nobody pings themselves");
+    }
+
+    @Test
+    void staffCanSpyOnEveryPartyChat() {
+        FakePlayer carol = platform.join("Carol", "lobby");
+        core.playerJoined(carol);
+        party();
+        core.chatCommand().execute(carol, new String[]{"spy"});
+        await(() -> carol.saw("You are not in a party."));
+        assertFalse(carol.saw("Party chat spy on."), "no permission: an ordinary message");
+
+        carol.permissions.add("parties.admin.spy");
+        core.chatCommand().execute(carol, new String[]{"spy"});
+        await(() -> carol.saw("Party chat spy on."));
+        core.partyCommand().execute(bob, new String[]{"chat", "secret", "plan"}); // /p chat works like /pc
+        await(() -> carol.saw("[Spy] Alice's party » Bob » secret plan"));
+        await(() -> alice.saw("[Party] Bob » secret plan"));
+
+        carol.permissions.clear(); // e.g. LuckPerms took the rank away
+        core.chatCommand().execute(bob, new String[]{"after", "demotion"});
+        await(() -> alice.saw("[Party] Bob » after demotion"));
+        assertFalse(carol.saw("after demotion"), "spying stops with the permission");
+    }
+
+    @Test
+    void settingsMenuAndToggles() {
+        party();
+        core.partyCommand().execute(alice, new String[]{"settings"});
+        await(() -> alice.saw("Party Settings"));
+        assertTrue(alice.saw("Members can invite » OFF"));
+        assertTrue(alice.saw("Max size » 8"));
+
+        core.partyCommand().execute(alice, new String[]{"settings", "allinvite"});
+        await(() -> bob.saw("Alice turned allinvite on."));
+        core.partyCommand().execute(bob, new String[]{"settings", "public"});
+        await(() -> bob.saw("Your party role doesn't allow that."));
+        core.partyCommand().execute(alice, new String[]{"settings", "slowmode", "abc"});
+        await(() -> alice.saw("Usage: /party settings"));
+        core.partyCommand().execute(alice, new String[]{"settings", "slowmode", "5s"});
+        await(() -> bob.saw("Alice set party chat slow mode to 5s."));
+    }
+
+    @Test
+    void sizePermissionsOfTheOwnerRaiseTheLimit() {
+        alice.permissions.add("parties.size.16");
+        party();
+        core.partyCommand().execute(bob, new String[]{"list"});
+        await(() -> bob.saw("Party Members (2/16)"));
+        assertTrue(bob.saw("Owner » ● Alice") && bob.saw("Member » ● Bob"), String.join("\n", bob.messages));
     }
 
     /** Alice invites Bob, Bob accepts. */
@@ -182,6 +253,8 @@ class PartiesCoreTest {
         final String name;
         final List<String> messages = new CopyOnWriteArrayList<>();
         final List<String> connects = new CopyOnWriteArrayList<>();
+        final List<String> actionBars = new CopyOnWriteArrayList<>();
+        final java.util.Set<String> permissions = ConcurrentHashMap.newKeySet();
         volatile FakeBackend backend;
         volatile boolean signed;
 
@@ -208,6 +281,16 @@ class PartiesCoreTest {
         @Override
         public void sendMessage(Component message) {
             messages.add(PlainTextComponentSerializer.plainText().serialize(message));
+        }
+
+        @Override
+        public void sendActionBar(Component message) {
+            actionBars.add(PlainTextComponentSerializer.plainText().serialize(message));
+        }
+
+        @Override
+        public boolean hasPermission(String permission) {
+            return permissions.contains(permission);
         }
 
         @Override

@@ -3,6 +3,7 @@ package dev.partiesandchill.core.bridge;
 import dev.partiesandchill.core.ProxyPlayer.Backend;
 import dev.partiesandchill.core.network.LocalNetwork;
 import dev.partiesandchill.core.party.Party;
+import dev.partiesandchill.core.party.PartySettings;
 import dev.partiesandchill.core.party.PartyGuard.Action;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
@@ -29,12 +30,12 @@ class BridgeGuardTest {
     final BridgeChannel bridge = new BridgeChannel();
     final LocalNetwork network = new LocalNetwork(Duration.ofMinutes(1));
     final BridgeGuard guard = new BridgeGuard(id -> Optional.of(bw1), bridge, network, LoggerFactory.getLogger("test"));
-    final Party party = Party.create(ALICE, 0);
+    final Party party = Party.create(ALICE, 0, PartySettings.DEFAULTS);
 
     @Test
     void backendsAreOnlyAskedAboutEventsTheirPluginsListenTo() {
         assertFalse(guard.watches(Action.JOIN, BOB), "unknown backend: no bridge");
-        bridge.markBridged("bw-1", 1 << BridgeMessage.EVENT_CHAT);
+        bridge.markBridged("bw-1", 2, 1 << BridgeMessage.EVENT_CHAT);
         assertFalse(guard.watches(Action.JOIN, BOB));
         assertTrue(guard.allows(Action.JOIN, BOB, party, ""));
         assertTrue(guard.watches(Action.CHAT, BOB));
@@ -43,8 +44,8 @@ class BridgeGuardTest {
 
     @Test
     void theAskedServerDecides() throws Exception {
-        bridge.markBridged("bw-1", 1 << BridgeMessage.EVENT_JOIN);
-        network.playerJoined(ALICE, "Alice");
+        bridge.markBridged("bw-1", 2, 1 << BridgeMessage.EVENT_JOIN);
+        network.playerJoined(ALICE, "Alice", 8);
         network.serverSwitched(ALICE, "lobby");
         CompletableFuture<Boolean> allowed = CompletableFuture.supplyAsync(() -> guard.allows(Action.JOIN, BOB, party, ""));
 
@@ -59,13 +60,13 @@ class BridgeGuardTest {
 
     @Test
     void silentBackendsDontBlockParties() {
-        bridge.markBridged("bw-1", 1 << BridgeMessage.EVENT_DISBAND);
+        bridge.markBridged("bw-1", 2, 1 << BridgeMessage.EVENT_DISBAND);
         long start = System.nanoTime();
         assertTrue(guard.allows(Action.DISBAND, ALICE, party, ""), "no answer = allowed");
         long waited = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
         assertTrue(waited >= BridgeGuard.TIMEOUT.toMillis() && waited < 3 * BridgeGuard.TIMEOUT.toMillis(), waited + " ms");
         assertFalse(guard.watches(Action.DISBAND, ALICE), "a silent backend isn't asked again...");
-        bridge.markBridged("bw-1", 1 << BridgeMessage.EVENT_DISBAND);
+        bridge.markBridged("bw-1", 2, 1 << BridgeMessage.EVENT_DISBAND);
         assertTrue(guard.watches(Action.DISBAND, ALICE), "...until its next hello");
     }
 
@@ -73,7 +74,7 @@ class BridgeGuardTest {
     void aClosedConnectionIsAllowedRightAway() {
         Backend closing = server("bw-1", null); // the connection is gone
         BridgeGuard guard = new BridgeGuard(id -> Optional.of(closing), bridge, network, LoggerFactory.getLogger("test"));
-        bridge.markBridged("bw-1", 1 << BridgeMessage.EVENT_CHAT);
+        bridge.markBridged("bw-1", 2, 1 << BridgeMessage.EVENT_CHAT);
         long start = System.nanoTime();
         assertTrue(guard.allows(Action.CHAT, ALICE, party, "hi"));
         assertTrue(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) < BridgeGuard.TIMEOUT.toMillis());

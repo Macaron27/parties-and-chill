@@ -4,6 +4,8 @@ import dev.partiesandchill.core.party.Invite;
 import dev.partiesandchill.core.party.Party;
 import dev.partiesandchill.core.party.PartyEvent;
 import dev.partiesandchill.core.party.PartyMember;
+import dev.partiesandchill.core.party.PartyRole;
+import dev.partiesandchill.core.party.PartySettings;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -58,21 +60,32 @@ class RedisNetworkTest {
         RedisNetwork a = proxy("a"), b = proxy("b");
         a.start(e -> { });
         b.start(e -> { });
-        a.playerJoined(ALICE, "Alice");
+        a.playerJoined(ALICE, "Alice", 8);
 
         assertTrue(b.isOnline(ALICE));
         assertEquals(Optional.of(ALICE), b.findOnline("ALICE"));
         assertEquals(Optional.of("Alice"), b.nameOf(ALICE));
 
         UUID bob = UUID.randomUUID();
-        b.playerJoined(bob, "Bob");
+        b.playerJoined(bob, "Bob", 16);
         assertTrue(a.isOnline(bob), "b started after a's last refresh: falls back to its heartbeat key");
+        assertEquals(16, a.sizeLimit(bob), "size limits are shared with the other proxies");
+        assertEquals(0, a.sizeLimit(UUID.randomUUID()), "unknown player");
 
+        for (String key : List.of("net:name:" + ALICE, "net:uuid:alice", "net:size:" + ALICE)) {
+            assertEquals(-1, redis.pttl(key), key + " never expires while the player is online");
+        }
         b.playerLeft(ALICE); // stale disconnect from a proxy the player already left
         assertTrue(a.isOnline(ALICE));
+        assertEquals(-1, redis.pttl("net:name:" + ALICE), "a stale disconnect doesn't start the countdown");
         a.playerLeft(ALICE);
         assertFalse(b.isOnline(ALICE));
         assertEquals(Optional.of(ALICE), b.uuidOf("alice"), "name stays resolvable for the grace period");
+        assertEquals(8, b.sizeLimit(ALICE));
+        for (String key : List.of("net:name:" + ALICE, "net:uuid:alice", "net:size:" + ALICE)) {
+            long ttl = redis.pttl(key);
+            assertTrue(ttl > 0 && ttl <= Duration.ofMinutes(20).toMillis(), key + " expires after leaving: " + ttl);
+        }
     }
 
     @Test
@@ -134,11 +147,12 @@ class RedisNetworkTest {
     @Test
     void jsonRoundTripsEveryShape() {
         Party party = new Party(UUID.randomUUID(), ALICE,
-                List.of(PartyMember.joined(ALICE, 1), new PartyMember(UUID.randomUUID(), 2, 99)),
-                List.of(new Invite(UUID.randomUUID(), ALICE, 60_000)));
+                List.of(PartyMember.joined(ALICE, 1), new PartyMember(UUID.randomUUID(), 2, 99, PartyRole.MODERATOR)),
+                List.of(new Invite(UUID.randomUUID(), ALICE, 60_000)), PartySettings.DEFAULTS.withSlowMode(3));
         assertEquals(party, Json.party(Json.party(party)));
         for (PartyEvent event : List.of(
                 new PartyEvent.Warp(Set.of(ALICE), "bw-1", 1000),
+                new PartyEvent.Chat(Set.of(ALICE), ALICE, ALICE, "hi @Alice", Set.of(), 5),
                 new PartyEvent.PartyChanged(Set.of(ALICE), party, null),
                 new PartyEvent.PartyChanged(Set.of(ALICE), null, party))) {
             assertEquals(event, Json.event(Json.event(event)));
@@ -160,7 +174,7 @@ class RedisNetworkTest {
         RedisNetwork a = proxy("a"), b = proxy("b");
         a.start(e -> { });
         b.start(e -> { });
-        a.playerJoined(ALICE, "Alice");
+        a.playerJoined(ALICE, "Alice", 8);
         a.serverSwitched(ALICE, "bw-1");
         assertEquals(Optional.of("bw-1"), b.serverOf(ALICE));
 
