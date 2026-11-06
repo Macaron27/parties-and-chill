@@ -47,6 +47,7 @@ Pick the jar for your proxy, and put the Paper bridge on every backend.
 | `PartiesAndChill-bungee.jar` | each BungeeCord proxy | BungeeCord 1.21 (built against `1.21-R0.4`), Java 21+ |
 | `PartiesAndChill-paper.jar` | each backend server | Spigot/Paper 1.8.8 → 26.x, Java 8+ |
 | `PartiesAndChill-api.jar` | your plugin's build (compile only) | see [api/README.md](api/README.md) |
+| `partiesandchill_pumpkin.wasm` / `partiesandchill_bridge.wasm` | Pumpkin servers (parties on the server / backend bridge) | see [PumpkinMC/README.md](PumpkinMC/README.md) |
 
 Both proxy jars read the same `config.yml` and `messages.yml` (in `plugins/partiesandchill/` on Velocity,
 `plugins/PartiesAndChill/` on BungeeCord).
@@ -89,6 +90,7 @@ velocity/   Velocity adapter: events, commands and players handed to core
 bungee/     BungeeCord adapter: same, plus shaded libraries Velocity would otherwise provide
 paper/      backend bridge (Java 8 bytecode): chat lock, AdvancedBan hook, BedWars adapters, developer API
 etc/        how to add other platforms
+PumpkinMC/  Rust port for Pumpkin servers (WebAssembly plugins): core, standalone plugin, backend bridge, tests
 builds/     compiled jars (not committed)
 ```
 

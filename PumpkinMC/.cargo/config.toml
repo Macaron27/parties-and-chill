@@ -1,0 +1,11 @@
+[alias]
+# The two plugins to ship:
+#   target/wasm32-wasip2/release/partiesandchill_pumpkin.wasm  (parties on this server: /party, /pc)
+#   target/wasm32-wasip2/release/partiesandchill_bridge.wasm   (backend bridge for Parties & Chill proxies)
+plugins = "build --release --target wasm32-wasip2 -p partiesandchill-pumpkin -p partiesandchill-bridge"
+# Core tests as plain WASI programs (wasmtime runner below) and natively.
+wasi-test = "test -p parties-core --target wasm32-wasip2"
+native-test = "test -p parties-core --target x86_64-unknown-linux-gnu"
+
+[target.wasm32-wasip2]
+runner = ["wasmtime", "run", "--dir", "."]

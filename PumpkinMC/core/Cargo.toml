@@ -1,0 +1,12 @@
+[package]
+name = "parties-core"
+description = "Parties & Chill's platform-agnostic core: party rules, chat, commands, config.yml, messages.yml and the bridge protocol."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+uuid.workspace = true
+yaml-rust2.workspace = true

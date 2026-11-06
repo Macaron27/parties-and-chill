@@ -4,6 +4,7 @@ build/
 builds/
 target/
 out/
+__pycache__/
 
 # Local test servers
 run/
