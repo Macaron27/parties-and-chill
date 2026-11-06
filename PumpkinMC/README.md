@@ -4,7 +4,7 @@ Parties & Chill as [Pumpkin](https://github.com/Pumpkin-MC/Pumpkin) plugins. Pum
 Rust; its plugins are WebAssembly components (`wasm32-wasip2`) built against
 [`pumpkin-plugin-api`](https://crates.io/crates/pumpkin-plugin-api) (WIT `pumpkin:plugin@0.1.0`, what Pumpkin loads by
 default). Built against `0.2.1+26.3-26.51`, tested on the Pumpkin nightly `0.2.1+26.3-26.60` (2026-11-06, Minecraft
-26.3), with Velocity 4.3.1 for the bridge.
+26.3), with Velocity 4.3.1 and BungeeCord build 2111 (26.1-R0.1-SNAPSHOT, 26.3 clients) for the bridge.
 
 Two plugins, like the Java jars:
 
@@ -51,7 +51,8 @@ allowed_permissions = ["fs.write.data"]
 
 The bridge asks for nothing. Like the Paper bridge, it trusts `pnc:main` plugin messages: run it only behind proxies
 running Parties & Chill (they block that channel from clients) with the backend reachable through them only
-(`[networking.proxy.velocity]` with the forwarding secret, or BungeeCord forwarding behind a firewall).
+(`[networking.proxy.velocity]` with the forwarding secret, or `[networking.proxy.bungeecord]` with BungeeGuard's token as
+`secret` or behind a firewall).
 
 ## `partiesandchill`: parties on a Pumpkin server
 
@@ -179,10 +180,12 @@ End-to-end on a real Pumpkin server, with 26.3 bot players (`tools/e2e/mcbot.py`
 
 ```bash
 cargo plugins && cargo build --release --target wasm32-wasip2 -p pnc-probe
-python3 PumpkinMC/tools/e2e/run.py <dir> pumpkin bridge   # from the repository root
+python3 PumpkinMC/tools/e2e/run.py <dir> pumpkin bridge bungee   # from the repository root
 ```
 
 `<dir>` holds the Pumpkin binary as `pumpkin` (the `pumpkin-X64-Linux` asset of the
-[nightly release](https://github.com/Pumpkin-MC/Pumpkin/releases/tag/nightly)); for `bridge` also `velocity.jar` and
-`PartiesAndChill-velocity.jar` (`./gradlew :velocity:shadowJar`), run with Java from the `gradle:jdk25` Docker image.
-Not observed by the bots: action bars and sounds (sent, not captured).
+[nightly release](https://github.com/Pumpkin-MC/Pumpkin/releases/tag/nightly)). `bridge` runs the bridge behind
+Velocity (modern forwarding) and needs `velocity.jar` and `PartiesAndChill-velocity.jar`
+(`./gradlew :velocity:shadowJar`); `bungee` runs it behind BungeeCord (IP forwarding) and needs `BungeeCord.jar`
+(<https://ci.md-5.net/job/BungeeCord/>) and `PartiesAndChill-bungee.jar` (`./gradlew :bungee:shadowJar`). The proxies run
+with Java from the `gradle:jdk25` Docker image. Not observed by the bots: action bars and sounds (sent, not captured).

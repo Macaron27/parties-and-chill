@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """End-to-end tests of the Pumpkin plugins on a real Pumpkin server, with 26.3 bot players (mcbot.py).
 
-    python3 PumpkinMC/tools/e2e/run.py <dir> [pumpkin] [bridge]
+    python3 PumpkinMC/tools/e2e/run.py <dir> [pumpkin] [bridge] [bungee]
 
 <dir> holds the Pumpkin binary as `pumpkin` (the `pumpkin-X64-Linux` asset of
 https://github.com/Pumpkin-MC/Pumpkin/releases/tag/nightly); servers run in throwaway folders inside it. Build the
@@ -10,6 +10,7 @@ plugins first (`cargo plugins` in PumpkinMC/).
 - `pumpkin`: partiesandchill_pumpkin.wasm alone: commands, chat lock, settings, roles, warp, disconnect grace, spy.
 - `bridge`: partiesandchill_bridge.wasm behind Velocity running PartiesAndChill-velocity.jar (also in <dir>, with
   `velocity.jar`; Java runs in the gradle:jdk25 Docker image): hello, snapshots, the chat lock through the proxy.
+- `bungee`: the same behind BungeeCord running PartiesAndChill-bungee.jar (with `BungeeCord.jar`), IP forwarding.
 """
 import os
 import re
@@ -84,15 +85,13 @@ class Server:
                 self.proc.kill()
 
 
-def pumpkin(work, name, port, plugins, proxied=None):
-    """A fresh Pumpkin server in <work>/<name>, offline mode, on 127.0.0.1:<port>. `proxied`: Velocity secret."""
+def pumpkin(work, name, port, plugins, proxy=""):
+    """A fresh Pumpkin server in <work>/<name>, offline mode, on 127.0.0.1:<port>. `proxy`: its forwarding settings."""
     folder = os.path.join(work, name)
     shutil.rmtree(folder, ignore_errors=True)
     os.makedirs(os.path.join(folder, "plugins"))
     for plugin in plugins:
         shutil.copy(os.path.join(WASM, plugin), os.path.join(folder, "plugins"))
-    proxy = f'\n[networking.proxy]\nenabled = true\n\n[networking.proxy.velocity]\nenabled = true\nsecret = "{proxied}"\n' \
-        if proxied else ""
     with open(os.path.join(folder, "pumpkin.toml"), "w") as f:
         f.write(f"""[networking.java]
 enabled = true
@@ -259,17 +258,28 @@ def scenario_pumpkin(work):
         server.stop()
 
 
-def velocity(work, port, backend_port, secret):
-    """Velocity (gradle:jdk25 image, host network) with PartiesAndChill-velocity.jar, offline mode, modern forwarding."""
-    folder = os.path.join(work, "pnc-velocity")
+def java_proxy(work, name, jar, plugin, config):
+    """A proxy in <work>/<name> (gradle:jdk25 image, host network) running <jar> with <plugin>; `config`: {file: text}."""
+    folder = os.path.join(work, name)
     shutil.rmtree(folder, ignore_errors=True)
     os.makedirs(os.path.join(folder, "plugins"))
-    shutil.copy(os.path.join(work, "velocity.jar"), folder)
-    shutil.copy(os.path.join(work, "PartiesAndChill-velocity.jar"), os.path.join(folder, "plugins"))
-    with open(os.path.join(folder, "forwarding.secret"), "w") as f:
-        f.write(secret)
-    with open(os.path.join(folder, "velocity.toml"), "w") as f:
-        f.write(f"""config-version = "2.9"
+    shutil.copy(os.path.join(work, jar), folder)
+    shutil.copy(os.path.join(work, plugin), os.path.join(folder, "plugins"))
+    for file, text in config.items():
+        with open(os.path.join(folder, file), "w") as f:
+            f.write(text)
+    subprocess.run(["docker", "rm", "-f", name], capture_output=True)
+    return folder, ["docker", "run", "--rm", "-i", "--name", name, "--network", "host",
+                    "-u", f"{os.getuid()}:{os.getgid()}", "-v", f"{folder}:/v", "-w", "/v",
+                    "gradle:jdk25", "java", "-Xmx512m", "-jar", jar]
+
+
+def velocity(work, port, backend_port):
+    """Velocity with PartiesAndChill-velocity.jar, offline mode, modern forwarding. Returns it and Pumpkin's side."""
+    secret = "pnc-e2e-secret"
+    folder, command = java_proxy(work, "pnc-velocity", "velocity.jar", "PartiesAndChill-velocity.jar", {
+        "forwarding.secret": secret,
+        "velocity.toml": f"""config-version = "2.9"
 bind = "127.0.0.1:{port}"
 online-mode = false
 force-key-authentication = false
@@ -286,27 +296,63 @@ try = ["pumpkin"]
 login-ratelimit = 0
 # Bots type faster than people: rate-limited commands would be forwarded to the backend instead of run here.
 command-rate-limit = 0
-""")
-    subprocess.run(["docker", "rm", "-f", "pnc-e2e-velocity"], capture_output=True)
-    command = ["docker", "run", "--rm", "-i", "--name", "pnc-e2e-velocity", "--network", "host",
-               "-u", f"{os.getuid()}:{os.getgid()}", "-v", f"{folder}:/v", "-w", "/v",
-               "gradle:jdk25", "java", "-Xmx512m", "-jar", "velocity.jar"]
-    return Server("velocity", folder, command, r"Done \(").start(timeout=180)
+"""})
+    backend = f'\n[networking.proxy]\nenabled = true\n\n[networking.proxy.velocity]\nenabled = true\nsecret = "{secret}"\n'
+    return Server("velocity", folder, command, r"Done \("), backend
 
 
-def scenario_bridge(work):
-    """A Pumpkin backend with the bridge behind Velocity running Parties & Chill: the proxy owns the parties."""
-    secret = "pnc-e2e-secret"
-    backend = pumpkin(work, "pnc-bridge", 25612, ["partiesandchill_bridge.wasm", "pnc_probe.wasm"], proxied=secret)
-    proxy, players = None, []
+def bungeecord(work, port, backend_port):
+    """BungeeCord with PartiesAndChill-bungee.jar, offline mode, IP forwarding. Returns it and Pumpkin's side."""
+    folder, command = java_proxy(work, "pnc-bungeecord", "BungeeCord.jar", "PartiesAndChill-bungee.jar", {
+        "config.yml": f"""online_mode: false
+ip_forward: true
+connection_throttle: -1
+log_commands: false
+log_pings: false
+prevent_proxy_connections: false
+enforce_secure_profile: false
+listeners:
+- host: 127.0.0.1:{port}
+  query_enabled: false
+  motd: pnc
+  max_players: 20
+  tab_list: GLOBAL_PING
+  force_default_server: true
+  priorities:
+  - pumpkin
+  bind_local_address: true
+  ping_passthrough: false
+  forced_hosts: {{}}
+  proxy_protocol: false
+servers:
+  pumpkin:
+    address: 127.0.0.1:{backend_port}
+    restricted: false
+    motd: pumpkin
+permissions:
+  default: []
+groups: {{}}
+""",
+        # No modules (/alert, /find, /server...): nothing to download.
+        "modules.yml": "version: 99\nmodules: []\n",
+    })
+    backend = "\n[networking.proxy]\nenabled = true\n\n[networking.proxy.bungeecord]\nenabled = true\n"
+    return Server("bungeecord", folder, command, r"Listening on /127\.0\.0\.1"), backend
+
+
+def scenario_bridge(work, kind=velocity):
+    """A Pumpkin backend with the bridge behind a proxy running Parties & Chill: the proxy owns the parties."""
+    proxy, forwarding = kind(work, 25613, 25612)
+    backend = pumpkin(work, "pnc-bridge", 25612, ["partiesandchill_bridge.wasm", "pnc_probe.wasm"], forwarding)
+    players = []
     try:
         backend.wait_log(r"Parties & Chill bridge ready \(protocol 3, channel pnc:main\)")
         backend.wait_log(r'probe: subscribe to partiesandchillbridge: \{"ok":true,"result":true\}')
-        proxy = velocity(work, 25613, 25612, secret)
+        proxy.start(timeout=180)
         proxy.wait_log(r"Parties & Chill ready \(single-proxy mode\)")
         alice, bob, carol, dave = players[:] = bots(25613, "Alice", "Bob", "Carol", "Dave")
         backend.wait_log(r"Dave joined")
-        print("  Velocity + PartiesAndChill-velocity.jar in front of the bridge")
+        print(f"  {proxy.name} + Parties & Chill in front of the bridge")
 
         # The proxy runs /party; the bridge learns the party from its snapshots.
         alice.say("/p Bob")
@@ -352,21 +398,22 @@ def scenario_bridge(work):
         backend.wait_log(r'from partiesandchillbridge: \{"ok":true,"reply":-?\d+,"result":true\}', since=log)
         backend.wait_log(r'"event":"PartyLeaveEvent"', since=log)
         print("  API: cancelled join (check/verdict), getParty and removeMember answered by the proxy, leave event")
-        problems = backend.problems() + [l for l in proxy.lines if re.search(r"ERROR|Exception", l)]
+        problems = backend.problems() + [l for l in proxy.lines if re.search(r"ERROR|SEVERE|Exception", l)]
         assert not problems, "".join(problems)
     finally:
         for bot in players:
             bot.close()
-        if proxy:
+        if proxy.proc:
             proxy.console("end")
             try:
                 proxy.proc.wait(timeout=30)
             except subprocess.TimeoutExpired:
-                subprocess.run(["docker", "rm", "-f", "pnc-e2e-velocity"], capture_output=True)
+                subprocess.run(["docker", "rm", "-f", os.path.basename(proxy.folder)], capture_output=True)
         backend.stop()
 
 
-SCENARIOS = {"pumpkin": scenario_pumpkin, "bridge": scenario_bridge}
+SCENARIOS = {"pumpkin": scenario_pumpkin, "bridge": scenario_bridge,
+             "bungee": lambda work: scenario_bridge(work, bungeecord)}
 
 
 def main():
