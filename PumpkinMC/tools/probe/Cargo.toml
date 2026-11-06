@@ -1,0 +1,16 @@
+[package]
+name = "pnc-probe"
+description = "Test plugin for the Parties & Chill API (end-to-end tests only; not shipped)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+pumpkin-plugin-api.workspace = true
+serde_json.workspace = true
+tracing.workspace = true

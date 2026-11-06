@@ -1,0 +1,40 @@
+# Parties & Chill for Pumpkin (https://github.com/Pumpkin-MC/Pumpkin): WebAssembly plugins built against
+# pumpkin-plugin-api (WIT API v0.1, what release servers load).
+#   core/    parties-core: the platform-agnostic port of dev.partiesandchill.core (rules, chat, commands, config,
+#            messages, bridge protocol). Nothing in it knows about Pumpkin.
+#   plugin/  partiesandchill-pumpkin: the proxy plugin's behaviour on a Pumpkin server (/party, /pc, events, API).
+#   bridge/  partiesandchill-bridge: the Paper bridge's behaviour, for Pumpkin servers behind Parties & Chill proxies.
+#   tools/probe/  a test plugin using the API (end-to-end tests only, not shipped).
+# Build: `cargo plugins`; test: `cargo native-test` / `cargo wasi-test` (aliases in .cargo/config.toml).
+[workspace]
+resolver = "3"
+members = ["core", "plugin", "bridge", "tools/probe"]
+
+[workspace.package]
+# Keep in step with build.gradle.kts (subprojects version).
+version = "1.3.0"
+edition = "2024"
+rust-version = "1.99"
+license = "AGPL-3.0-only"
+repository = "https://github.com/Macaron27/parties-and-chill"
+
+[workspace.dependencies]
+parties-core = { path = "core" }
+# Pumpkin's plugin SDK (WIT pumpkin:plugin@0.1.0). Cargo ignores build metadata in requirements; Cargo.lock pins
+# 0.2.1+26.3-26.51, the release on crates.io, as in the Friends and ServerManager ports.
+pumpkin-plugin-api = "0.2.1"
+tracing = { version = "0.1", default-features = false, features = ["std"] }
+uuid = { version = "1", default-features = false, features = ["std", "v4"] }
+yaml-rust2 = { version = "0.10", default-features = false }
+serde_json = "1"
+
+# Unoptimized, pumpkin-plugin-api's generated event dispatcher has more locals than wasmtime accepts, so a debug
+# build would not load in Pumpkin; opt-level 1 brings it under the limit (see ServerManager's port).
+[profile.dev]
+opt-level = 1
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = "s"
+strip = "debuginfo"
