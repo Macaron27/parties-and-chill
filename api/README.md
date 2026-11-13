@@ -17,7 +17,7 @@ dependencies { compileOnly(files("libs/PartiesAndChill-api.jar")) }
 ```
 
 **From source:** publish it to your local Maven repository, then depend on
-`dev.partiesandchill:parties-and-chill-api:1.2.0`:
+`dev.partiesandchill:parties-and-chill-api:1.3.0`:
 
 ```bash
 ./gradlew :api:publishToMavenLocal
@@ -27,14 +27,14 @@ Gradle (Kotlin DSL):
 
 ```kotlin
 repositories { mavenLocal() }
-dependencies { compileOnly("dev.partiesandchill:parties-and-chill-api:1.2.0") }
+dependencies { compileOnly("dev.partiesandchill:parties-and-chill-api:1.3.0") }
 ```
 
 Gradle (Groovy):
 
 ```groovy
 repositories { mavenLocal() }
-dependencies { compileOnly 'dev.partiesandchill:parties-and-chill-api:1.2.0' }
+dependencies { compileOnly 'dev.partiesandchill:parties-and-chill-api:1.3.0' }
 ```
 
 Maven:
@@ -43,7 +43,7 @@ Maven:
 <dependency>
   <groupId>dev.partiesandchill</groupId>
   <artifactId>parties-and-chill-api</artifactId>
-  <version>1.2.0</version>
+  <version>1.3.0</version>
   <scope>provided</scope>
 </dependency>
 ```
